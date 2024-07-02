@@ -1,26 +1,26 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
+import os
 from typing import Dict
 
 # Constants
-DATABASE_FILE = 'final_employee_data.db'
-conn = sqlite3.connect(DATABASE_FILE, check_same_thread=False)
+EXCEL_FILE = 'data.xlsx'
+DATA_PATH = os.path.join(os.getcwd(), EXCEL_FILE)
 
 # Define your fields here with their types
 FIELDS: Dict[str, str] = {
-    'EmployeeID': 'INTEGER',
-    'GlobalCareerBand': 'TEXT',
-    'BFLevel1': 'TEXT',
-    'BFLevel2': 'TEXT',
-    'BFLevel3': 'TEXT',
-    'BFLevel4': 'TEXT',
-    'BFLevel5': 'TEXT',
-    'DepartmentName': 'TEXT',
-    'WorkLocation': 'TEXT',
+    'Employee ID': 'number',
+    'Global Career Band': 'text',
+    'BF Level 1': 'text',
+    'BF Level 2': 'text',
+    'BF Level 3': 'text',
+    'BF Level 4': 'text',
+    'BF Level 5': 'text',
+    'Department Name': 'text',
+    'Work Location': 'text',
 }
 
-SKILL_FIELDS: Dict[str, str] = {f'Skill{i}': 'TEXT' for i in range(1, 11)}
+SKILL_FIELDS: Dict[str, str] = {f'Skill {i}': 'text' for i in range(1, 11)}
 
 # Combine all fields
 ALL_FIELDS: Dict[str, str] = {**FIELDS, **SKILL_FIELDS}
@@ -86,61 +86,45 @@ custom_css = """
 st.set_page_config(page_title="Employee Data Management", layout="wide")
 st.markdown(custom_css, unsafe_allow_html=True)
 
-def create_table_if_not_exists():
-    cursor = conn.cursor()
-    columns = ', '.join([f'{key} {value}' for key, value in ALL_FIELDS.items()])
-    query = f"CREATE TABLE IF NOT EXISTS EmployeeData ({columns})"
-    cursor.execute(query)
-    conn.commit()
-
 def load_data() -> pd.DataFrame:
     try:
-        create_table_if_not_exists()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM EmployeeData")
-        rows = cursor.fetchall()
-        df = pd.DataFrame(rows, columns=ALL_FIELDS.keys())
+        if os.path.exists(DATA_PATH):
+            df = pd.read_excel(DATA_PATH)
+            
+            # Ensure all required columns exist
+            for field in ALL_FIELDS.keys():
+                if field not in df.columns:
+                    df[field] = None
+            
+            # Ensure all number fields are of the correct type
+            for field, field_type in ALL_FIELDS.items():
+                if field_type == 'number':
+                    df[field] = pd.to_numeric(df[field], errors='coerce').fillna(0).astype(int)
+        else:
+            df = pd.DataFrame(columns=ALL_FIELDS.keys())
     except Exception as e:
         st.error(f'Error loading data: {str(e)}')
         df = pd.DataFrame(columns=ALL_FIELDS.keys())
     return df
 
-def save_to_database(new_data: Dict[str, str]) -> None:
+def save_to_excel(df: pd.DataFrame) -> None:
     try:
-        create_table_if_not_exists()
-        cursor = conn.cursor()
-        
-        # Check if EmployeeID exists to decide between INSERT and UPDATE
-        employee_id = new_data['EmployeeID']
-        if pd.notna(employee_id) and cursor.execute(f"SELECT 1 FROM EmployeeData WHERE EmployeeID = ?", (employee_id,)).fetchone():
-            # Update existing record
-            update_query = ", ".join([f"{key} = ?" for key in new_data.keys()])
-            query = f"UPDATE EmployeeData SET {update_query} WHERE EmployeeID = ?"
-            cursor.execute(query, (*new_data.values(), employee_id))
-            st.success('Data updated successfully.')
-        else:
-            # Insert new record
-            columns = ', '.join(new_data.keys())
-            placeholders = ', '.join(['?'] * len(new_data))
-            query = f"INSERT INTO EmployeeData ({columns}) VALUES ({placeholders})"
-            cursor.execute(query, tuple(new_data.values()))
-            st.success('New data saved successfully.')
-        
-        conn.commit()
+        df.to_excel(DATA_PATH, index=False)
+        st.success('Data saved successfully.')
     except Exception as e:
         st.error(f'Error saving data: {str(e)}')
 
 def main() -> None:
     st.markdown("<h1 class='main-header'>Employee Data Management</h1>", unsafe_allow_html=True)
     
-    # Load data from SQLite
+    # Load data from Excel
     df = load_data()
     
     # Initialize session state
     if 'search_result' not in st.session_state:
         st.session_state.search_result = None
     if 'form_data' not in st.session_state:
-        st.session_state.form_data = {key: None for key in ALL_FIELDS.keys()}
+        st.session_state.form_data = {}
     
     # Search form
     st.markdown("<h2 class='subheader'>Search by Employee ID</h2>", unsafe_allow_html=True)
@@ -155,7 +139,7 @@ def main() -> None:
         if employee_id_search == 0:
             st.warning('Please enter a valid Employee ID.')
         else:
-            search_result = df[df['EmployeeID'] == employee_id_search]
+            search_result = df[df['Employee ID'] == employee_id_search]
             if not search_result.empty:
                 st.dataframe(search_result, use_container_width=True)
                 st.session_state.search_result = search_result
@@ -172,9 +156,9 @@ def main() -> None:
                 for field in ALL_FIELDS:
                     value = search_result.iloc[0][field]
                     if pd.notna(value):
-                        st.session_state.form_data[field] = value
+                        st.session_state.form_data[field] = int(value) if ALL_FIELDS[field] == 'number' else str(value)
                     else:
-                        st.session_state.form_data[field] = None
+                        st.session_state.form_data[field] = 0 if ALL_FIELDS[field] == 'number' else ''
                 st.success('Form filled with search result.')
                 st.experimental_rerun()
             else:
@@ -187,7 +171,7 @@ def main() -> None:
     for i, (field, field_type) in enumerate(FIELDS.items()):
         with col1 if i < len(FIELDS) // 2 else col2:
             if field_type == 'number':
-                st.session_state.form_data[field] = st.number_input(field, value=st.session_state.form_data.get(field, None), min_value=0, key=field)
+                st.session_state.form_data[field] = st.number_input(field, value=st.session_state.form_data.get(field, 0), min_value=0, key=field)
             else:
                 st.session_state.form_data[field] = st.text_input(field, value=st.session_state.form_data.get(field, ''), key=field)
 
@@ -204,15 +188,28 @@ def main() -> None:
     with col1:
         if st.button('Save', key='save_button', use_container_width=True):
             new_data = {field: st.session_state.form_data[field] for field in ALL_FIELDS}
-            save_to_database(new_data)
-            st.session_state.form_data = {key: None for key in ALL_FIELDS.keys()}
+            for field, field_type in ALL_FIELDS.items():
+                if field_type == 'number':
+                    new_data[field] = int(new_data[field]) if new_data[field] else None
+            
+            if not df.empty and new_data['Employee ID'] in df['Employee ID'].values:
+                index = df.index[df['Employee ID'] == new_data['Employee ID']].tolist()[0]
+                df.loc[index] = pd.Series(new_data)
+                st.success('Data updated successfully.')
+            else:
+                df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
+                st.success('New data saved successfully.')
+            
+            save_to_excel(df)
+            st.session_state.form_data = {}
             st.experimental_rerun()
 
     with col2:
         if st.button('Clear', key='clear_button', use_container_width=True):
-            st.session_state.form_data = {key: None for key in ALL_FIELDS.keys()}
+            # Clear all form data fields directly
+            st.session_state.form_data = {field: None for field in ALL_FIELDS}
             st.success('Form cleared.')
-            st.rerun()
+            st.experimental_rerun()
 
 if __name__ == '__main__':
     main()
