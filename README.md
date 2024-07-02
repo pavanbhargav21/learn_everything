@@ -2,10 +2,9 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from typing import Dict
-import os
 
 # Constants
-DATABASE_FILE = 'employee_data.db'
+DATABASE_FILE = 'final_employee_data.db'
 conn = sqlite3.connect(DATABASE_FILE, check_same_thread=False)
 
 # Define your fields here with their types
@@ -26,19 +25,66 @@ SKILL_FIELDS: Dict[str, str] = {f'Skill{i}': 'TEXT' for i in range(1, 11)}
 # Combine all fields
 ALL_FIELDS: Dict[str, str] = {**FIELDS, **SKILL_FIELDS}
 
-# Function to load custom CSS from a file
-def load_css(file_name: str):
-    with open(file_name) as f:
-        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-
-# Get the directory of the current script
-current_dir = os.path.dirname(__file__)
-
-# Path to the CSS file
-css_file_path = os.path.join(current_dir, "styles.css")
+# Custom CSS to improve the look and feel
+custom_css = """
+<style>
+    .stApp {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+        background-color: #f0f2f6;
+    }
+    .main-header {
+        color: #0e1117;
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 2rem;
+        text-align: center;
+        background-color: #4CAF50;
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+    }
+    .subheader {
+        color: #0e1117;
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        background-color: #2196F3;
+        color: white;
+        padding: 10px;
+        border-radius: 5px;
+    }
+    .stButton>button {
+        width: 100%;
+        background-color: #4CAF50;
+        color: white;
+        font-weight: bold;
+    }
+    .stTextInput>div>div>input, .stNumberInput>div>div>input {
+        background-color: white;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    .search-container {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+    }
+    .search-container > div {
+        flex: 1;
+    }
+    .stDataFrame {
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        overflow: hidden;
+    }
+</style>
+"""
 
 st.set_page_config(page_title="Employee Data Management", layout="wide")
-load_css(css_file_path)
+st.markdown(custom_css, unsafe_allow_html=True)
 
 def create_table_if_not_exists():
     cursor = conn.cursor()
@@ -111,8 +157,6 @@ def main() -> None:
         else:
             search_result = df[df['EmployeeID'] == employee_id_search]
             if not search_result.empty:
-                # Convert EmployeeID to string to avoid commas in display
-                search_result['EmployeeID'] = search_result['EmployeeID'].astype(str)
                 st.dataframe(search_result, use_container_width=True)
                 st.session_state.search_result = search_result
                 st.success('Data found for Employee ID.')
@@ -137,42 +181,32 @@ def main() -> None:
                 st.warning('No data found for Employee ID.')
 
     # Data entry / edit form
-    st.markdown("<h2 class='subheader'>Employee Data</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 class='subheader'>Employee Data </h2>", unsafe_allow_html=True)
     col1, col2 = st.columns(2)
 
     for i, (field, field_type) in enumerate(FIELDS.items()):
         with col1 if i < len(FIELDS) // 2 else col2:
-            st.markdown(f"<div class='bold-label'>{field}</div>", unsafe_allow_html=True)
             if field_type == 'number':
-                st.session_state.form_data[field] = st.number_input(field, value=st.session_state.form_data.get(field, None), min_value=0, key=field, label_visibility='collapsed')
+                st.session_state.form_data[field] = st.number_input(field, value=st.session_state.form_data.get(field, None), min_value=0, key=field)
             else:
-                st.session_state.form_data[field] = st.text_input(field, value=st.session_state.form_data.get(field, ''), key=field, label_visibility='collapsed')
+                st.session_state.form_data[field] = st.text_input(field, value=st.session_state.form_data.get(field, ''), key=field)
 
     st.markdown("<h3 class='subheader'>Skills</h3>", unsafe_allow_html=True)
     skills_col1, skills_col2 = st.columns(2)
     for i, (skill_field, field_type) in enumerate(SKILL_FIELDS.items()):
         with skills_col1 if i < len(SKILL_FIELDS) // 2 else skills_col2:
-            st.markdown(f"<div class='bold-label'>{skill_field}</div>", unsafe_allow_html=True)
-            st.session_state.form_data[skill_field] = st.text_input(skill_field, value=st.session_state.form_data.get(skill_field, ''), key=skill_field, label_visibility='collapsed')
+            st.session_state.form_data[skill_field] = st.text_input(skill_field, value=st.session_state.form_data.get(skill_field, ''), key=skill_field)
 
     # Save and Clear buttons
     st.markdown("<br>", unsafe_allow_html=True)
     col1, col2 = st.columns(2)
 
     with col1:
-        # if st.button('Save', key='save_button', use_container_width=True):
-        #     new_data = {field: st.session_state.form_data[field] for field in ALL_FIELDS}
-        #     save_to_database(new_data)
-        #     st.session_state.form_data = {key: None for key in ALL_FIELDS.keys()}
-        #     st.experimental_rerun()
         if st.button('Save', key='save_button', use_container_width=True):
             new_data = {field: st.session_state.form_data[field] for field in ALL_FIELDS}
             save_to_database(new_data)
-            
-            # Reset form_data to clear all fields
             st.session_state.form_data = {key: None for key in ALL_FIELDS.keys()}
-            st.rerun()
-
+            st.experimental_rerun()
 
     with col2:
         if st.button('Clear', key='clear_button', use_container_width=True):
