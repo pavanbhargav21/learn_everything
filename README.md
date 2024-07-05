@@ -1,218 +1,451 @@
-import streamlit as st
-import pandas as pd
-import sqlite3
-from typing import Dict
+Certainly. I'll provide a more complete project structure including HTML, CSS, and Vue components. This will be a simplified version that you can expand upon, but it should give you a solid starting point.
 
-# Constants
-DATABASE_FILE = 'final_employee_dataaaaaaaaa.db'
-conn = sqlite3.connect(DATABASE_FILE, check_same_thread=False)
+Project Structure:
 
-# Define your fields here with their types
-FIELDS: Dict[str, str] = {
-    'EmployeeID': 'INTEGER',
-    'GlobalCareerBand': 'TEXT',
-    'BFLevel1': 'TEXT',
-    'BFLevel2': 'TEXT',
-    'BFLevel3': 'TEXT',
-    'BFLevel4': 'TEXT',
-    'BFLevel5': 'TEXT',
-    'DepartmentName': 'TEXT',
-    'WorkLocation': 'TEXT',
+src/
+├── App.vue
+├── main.js
+├── assets/
+│   └── styles.css
+└── components/
+    ├── PulseConfigurator.vue
+    ├── WorkflowMaster.vue
+    ├── WorkflowConfigurator.vue
+    ├── AppStore.vue
+    ├── WorkflowMasterPopup.vue
+    ├── KeyNameMapping.vue
+    └── VolumeMatrix.vue
+
+
+1. src/App.vue
+vue
+<template>
+  <div id="app">
+    <h1>Pulse configurator</h1>
+    <PulseConfigurator />
+  </div>
+</template>
+
+<script>
+import PulseConfigurator from './components/PulseConfigurator.vue'
+
+export default {
+  name: 'App',
+  components: {
+    PulseConfigurator
+  }
+}
+</script>
+
+
+2. src/main.js
+javascript
+import { createApp } from 'vue'
+import App from './App.vue'
+import './assets/styles.css'
+
+createApp(App).mount('#app')
+
+
+3. src/assets/styles.css
+css
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+  background-color: #f0f0f0;
 }
 
-SKILL_FIELDS: Dict[str, str] = {f'Skill{i}': 'TEXT' for i in range(1, 11)}
+.pulse-configurator {
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 20px;
+}
 
-# Combine all fields
-ALL_FIELDS: Dict[str, str] = {**FIELDS, **SKILL_FIELDS}
+.tabs {
+  display: flex;
+  margin-bottom: 20px;
+}
 
-# Custom CSS to improve the look and feel
-custom_css = """
-<style>
-    .stApp {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 2rem;
-        background-color: #f0f2f6;
+.tabs button {
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-bottom: none;
+  padding: 10px 20px;
+  cursor: pointer;
+}
+
+.tabs button.active {
+  background-color: white;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+input, select {
+  width: 100%;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+
+.input-group {
+  display: flex;
+}
+
+.input-group input {
+  flex-grow: 1;
+  margin-right: 10px;
+}
+
+button {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+button:hover {
+  background-color: #45a049;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+th {
+  background-color: #f2f2f2;
+}
+
+
+4. src/components/PulseConfigurator.vue
+vue
+<template>
+  <div class="pulse-configurator">
+    <div class="tabs">
+      <button @click="activeTab = 'workflowMaster'" :class="{ active: activeTab === 'workflowMaster' }">Workflow master</button>
+      <button @click="activeTab = 'keyNameMapping'" :class="{ active: activeTab === 'keyNameMapping' }">Key name mapping</button>
+      <button @click="activeTab = 'volumeMatrix'" :class="{ active: activeTab === 'volumeMatrix' }">Volume matrix</button>
+    </div>
+
+    <WorkflowMaster v-if="activeTab === 'workflowMaster'" />
+    <KeyNameMapping v-if="activeTab === 'keyNameMapping'" />
+    <VolumeMatrix v-if="activeTab === 'volumeMatrix'" />
+  </div>
+</template>
+
+<script>
+import WorkflowMaster from './WorkflowMaster.vue'
+import KeyNameMapping from './KeyNameMapping.vue'
+import VolumeMatrix from './VolumeMatrix.vue'
+
+export default {
+  components: {
+    WorkflowMaster,
+    KeyNameMapping,
+    VolumeMatrix
+  },
+  data() {
+    return {
+      activeTab: 'workflowMaster'
     }
-    .main-header {
-        color: #0e1117;
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin-bottom: 2rem;
-        text-align: center;
-        background-color: #4CAF50;
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
+  }
+}
+</script>
+
+
+5. src/components/WorkflowMaster.vue
+vue
+<template>
+  <div class="workflow-master">
+    <WorkflowConfigurator 
+      @view="showAppStore" 
+      @save="saveWorkflow"
+      @add="showAddWorkflowPopup"
+    />
+    <AppStore 
+      v-if="showingAppStore" 
+      :workflows="workflows"
+      @close="hideAppStore"
+      @save="saveFromAppStore"
+    />
+    <WorkflowMasterPopup 
+      v-if="showingAddPopup"
+      @save="addNewWorkflow"
+      @close="hideAddWorkflowPopup"
+    />
+  </div>
+</template>
+
+<script>
+import WorkflowConfigurator from './WorkflowConfigurator.vue'
+import AppStore from './AppStore.vue'
+import WorkflowMasterPopup from './WorkflowMasterPopup.vue'
+
+export default {
+  components: {
+    WorkflowConfigurator,
+    AppStore,
+    WorkflowMasterPopup
+  },
+  data() {
+    return {
+      showingAppStore: false,
+      showingAddPopup: false,
+      workflows: [
+        { id: 1, workflowName: 'IQAHKACA', systemName: 'IQAHKACA', workflowUrl: 'a link', windowTitles: '', environment: 'UAT', isActive: true },
+        { id: 2, workflowName: 'GPS', systemName: 'GPS', workflowUrl: 'a link', windowTitles: '', environment: 'Testing', isActive: true },
+        { id: 3, workflowName: 'CDD', systemName: 'CDD', workflowUrl: 'a link', windowTitles: '', environment: 'Prod', isActive: true }
+      ]
     }
-    .subheader {
-        color: #0e1117;
-        font-size: 1.5rem;
-        font-weight: 600;
-        margin-top: 2rem;
-        margin-bottom: 1rem;
-        background-color: #2196F3;
-        color: white;
-        padding: 10px;
-        border-radius: 5px;
+  },
+  methods: {
+    showAppStore() {
+      this.showingAppStore = true
+    },
+    hideAppStore() {
+      this.showingAppStore = false
+    },
+    showAddWorkflowPopup() {
+      this.showingAddPopup = true
+    },
+    hideAddWorkflowPopup() {
+      this.showingAddPopup = false
+    },
+    saveWorkflow(workflow) {
+      console.log('Saving workflow:', workflow)
+      // Implement save logic
+    },
+    saveFromAppStore(workflows) {
+      console.log('Saving workflows from AppStore:', workflows)
+      // Implement save logic from AppStore
+    },
+    addNewWorkflow(workflow) {
+      this.workflows.push({ ...workflow, id: this.workflows.length + 1, isActive: true })
+      this.hideAddWorkflowPopup()
     }
-    .stButton>button {
-        width: 100%;
-        background-color: #4CAF50;
-        color: white;
-        font-weight: bold;
+  }
+}
+</script>
+
+
+6. src/components/WorkflowConfigurator.vue
+vue
+<template>
+  <div class="workflow-configurator">
+    <h2>Workflow Configurator</h2>
+    <div class="form-group">
+      <label>Workflow name:</label>
+      <div class="input-group">
+        <input v-model="workflowName" placeholder="Please specify the workflow name">
+        <button @click="$emit('add')">+</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Workflow URL:</label>
+      <input v-model="workflowUrl" placeholder="Please specify the workflow URL">
+    </div>
+    <div class="form-group">
+      <label>Window Titles:</label>
+      <input v-model="windowTitles" placeholder="page title">
+    </div>
+    <div class="form-group">
+      <label>Environment:</label>
+      <select v-model="environment">
+        <option value="UAT">UAT</option>
+        <option value="Testing">Testing</option>
+        <option value="Production">Production</option>
+      </select>
+    </div>
+    <div class="button-group">
+      <button @click="$emit('view')">View</button>
+      <button @click="$emit('save', getWorkflowData())">Save</button>
+      <button @click="exportData">Export</button>
+    </div>
+  </div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      workflowName: '',
+      workflowUrl: '',
+      windowTitles: '',
+      environment: 'UAT'
     }
-    .stTextInput>div>div>input, .stNumberInput>div>div>input {
-        background-color: white;
-        border: 1px solid #ddd;
-        border-radius: 5px;
+  },
+  methods: {
+    getWorkflowData() {
+      return {
+        workflowName: this.workflowName,
+        workflowUrl: this.workflowUrl,
+        windowTitles: this.windowTitles,
+        environment: this.environment
+      }
+    },
+    exportData() {
+      // Implement export functionality
+      console.log('Exporting data...')
     }
-    .search-container {
-        display: flex;
-        align-items: flex-end;
-        gap: 10px;
+  }
+}
+</script>
+
+
+7. src/components/AppStore.vue
+vue
+<template>
+  <div class="app-store">
+    <h2>App store</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>WORKFLOW_NAME</th>
+          <th>SYSTEM_NAME</th>
+          <th>Workflow URL</th>
+          <th>Window titles</th>
+          <th>Environment</th>
+          <th>Is active</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="workflow in workflows" :key="workflow.id">
+          <td>{{ workflow.id }}</td>
+          <td>{{ workflow.workflowName }}</td>
+          <td>{{ workflow.systemName }}</td>
+          <td><a href="#">a link</a></td>
+          <td>{{ workflow.windowTitles }}</td>
+          <td>{{ workflow.environment }}</td>
+          <td>{{ workflow.isActive }}</td>
+          <td>
+            <button @click="editWorkflow(workflow)">Edit</button>
+            <button @click="deleteWorkflow(workflow)">Delete</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="button-group">
+      <button @click="$emit('save', workflows)">Save</button>
+      <button @click="$emit('close')">Close</button>
+    </div>
+  </div>
+</template>
+
+<script>
+export default {
+  props: ['workflows'],
+  methods: {
+    editWorkflow(workflow) {
+      // Implement edit logic
+      console.log('Editing workflow:', workflow)
+    },
+    deleteWorkflow(workflow) {
+      // Implement delete logic
+      console.log('Deleting workflow:', workflow)
     }
-    .search-container > div {
-        flex: 1;
+  }
+}
+</script>
+
+
+8. src/components/WorkflowMasterPopup.vue
+vue
+<template>
+  <div class="workflow-master-popup">
+    <h2>Workflow master</h2>
+    <div class="form-group">
+      <label>Workflow name:</label>
+      <input v-model="workflowName" placeholder="Please specify the workflow name">
+    </div>
+    <div class="form-group">
+      <label>System name:</label>
+      <input v-model="systemName" placeholder="VTD">
+    </div>
+    <div class="button-group">
+      <button @click="saveWorkflow">Save</button>
+      <button @click="$emit('close')">Cancel</button>
+    </div>
+  </div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      workflowName: '',
+      systemName: ''
     }
-    .stDataFrame {
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        overflow: hidden;
+  },
+  methods: {
+    saveWorkflow() {
+      this.$emit('save', {
+        workflowName: this.workflowName,
+        systemName: this.systemName
+      })
     }
-</style>
-"""
+  }
+}
+</script>
 
-st.set_page_config(page_title="Employee Data Management", layout="wide")
-st.markdown(custom_css, unsafe_allow_html=True)
 
-def create_table_if_not_exists():
-    cursor = conn.cursor()
-    columns = ', '.join([f'{key} {value}' for key, value in ALL_FIELDS.items()])
-    query = f"CREATE TABLE IF NOT EXISTS EmployeeData ({columns})"
-    cursor.execute(query)
-    conn.commit()
+9. src/components/KeyNameMapping.vue
+vue
+<template>
+  <div class="key-name-mapping">
+    <h2>Key Name Mapping</h2>
+    <!-- Implement Key Name Mapping content -->
+  </div>
+</template>
 
-def load_data() -> pd.DataFrame:
-    try:
-        create_table_if_not_exists()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM EmployeeData")
-        rows = cursor.fetchall()
-        df = pd.DataFrame(rows, columns=ALL_FIELDS.keys())
-    except Exception as e:
-        st.error(f'Error loading data: {str(e)}')
-        df = pd.DataFrame(columns=ALL_FIELDS.keys())
-    return df
+<script>
+export default {
+  // Implement component logic
+}
+</script>
 
-def save_to_database(new_data: Dict[str, str]) -> None:
-    try:
-        create_table_if_not_exists()
-        cursor = conn.cursor()
-        
-        # Check if EmployeeID exists to decide between INSERT and UPDATE
-        employee_id = new_data['EmployeeID']
-        if pd.notna(employee_id) and cursor.execute(f"SELECT 1 FROM EmployeeData WHERE EmployeeID = ?", (employee_id,)).fetchone():
-            # Update existing record
-            update_query = ", ".join([f"{key} = ?" for key in new_data.keys()])
-            query = f"UPDATE EmployeeData SET {update_query} WHERE EmployeeID = ?"
-            cursor.execute(query, (*new_data.values(), employee_id))
-            st.success('Data updated successfully.')
-        else:
-            # Insert new record
-            columns = ', '.join(new_data.keys())
-            placeholders = ', '.join(['?'] * len(new_data))
-            query = f"INSERT INTO EmployeeData ({columns}) VALUES ({placeholders})"
-            cursor.execute(query, tuple(new_data.values()))
-            st.success('New data saved successfully.')
-        
-        conn.commit()
-    except Exception as e:
-        st.error(f'Error saving data: {str(e)}')
 
-def main() -> None:
-    st.markdown("<h1 class='main-header'>Employee Data Management</h1>", unsafe_allow_html=True)
-    
-    # Load data from SQLite
-    df = load_data()
-    
-    # Initialize session state
-    if 'search_result' not in st.session_state:
-        st.session_state.search_result = None
-    if 'form_data' not in st.session_state:
-        st.session_state.form_data = {key: None for key in ALL_FIELDS.keys()}
-    
-    # Search form
-    st.markdown("<h2 class='subheader'>Search by Employee ID</h2>", unsafe_allow_html=True)
-    with st.container():
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            employee_id_search = st.number_input('Employee ID:', min_value=0, step=1, key='search_input')
-        with col2:
-            search_button = st.button('Search', key='search_button', use_container_width=True)
-    
-    if search_button:
-        if employee_id_search == 0:
-            st.warning('Please enter a valid Employee ID.')
-        else:
-            search_result = df[df['EmployeeID'] == employee_id_search]
-            if not search_result.empty:
-                st.dataframe(search_result, use_container_width=True)
-                st.session_state.search_result = search_result
-                st.success('Data found for Employee ID.')
-            else:
-                st.warning('No data found for Employee ID.')
-                st.session_state.search_result = None
+10. src/components/VolumeMatrix.vue
+vue
+<template>
+  <div class="volume-matrix">
+    <h2>Volume Matrix</h2>
+    <!-- Implement Volume Matrix content -->
+  </div>
+</template>
 
-    # Display edit button if search result exists
-    if st.session_state.search_result is not None:
-        if st.button('Edit', key='edit_button', use_container_width=True):
-            search_result = st.session_state.search_result
-            if not search_result.empty:
-                for field in ALL_FIELDS:
-                    value = search_result.iloc[0][field]
-                    if pd.notna(value):
-                        st.session_state.form_data[field] = value
-                    else:
-                        st.session_state.form_data[field] = None
-                st.success('Form filled with search result.')
-                st.experimental_rerun()
-            else:
-                st.warning('No data found for Employee ID.')
+<script>
+export default {
+  // Implement component logic
+}
+</script>
 
-    # Data entry / edit form
-    st.markdown("<h2 class='subheader'>Employee Data </h2>", unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
 
-    for i, (field, field_type) in enumerate(FIELDS.items()):
-        with col1 if i < len(FIELDS) // 2 else col2:
-            if field_type == 'number':
-                st.session_state.form_data[field] = st.number_input(field, value=st.session_state.form_data.get(field, None), min_value=0, key=field)
-            else:
-                st.session_state.form_data[field] = st.text_input(field, value=st.session_state.form_data.get(field, ''), key=field)
+This project structure provides a solid foundation for the Pulse configurator based on the image and your description. You'll need to:
 
-    st.markdown("<h3 class='subheader'>Skills</h3>", unsafe_allow_html=True)
-    skills_col1, skills_col2 = st.columns(2)
-    for i, (skill_field, field_type) in enumerate(SKILL_FIELDS.items()):
-        with skills_col1 if i < len(SKILL_FIELDS) // 2 else skills_col2:
-            st.session_state.form_data[skill_field] = st.text_input(skill_field, value=st.session_state.form_data.get(skill_field, ''), key=skill_field)
+1. Implement the missing functionality in each component (e.g., search, export, edit, delete).
+2. Add more detailed styling to match the exact look in the image.
+3. Implement proper state management (consider using Vuex for larger applications).
+4. Integrate with your backend API for data persistence.
+5. Add error handling and input validation.
+6. Implement the KeyNameMapping and VolumeMatrix components.
 
-    # Save and Clear buttons
-    st.markdown("<br>", unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button('Save', key='save_button', use_container_width=True):
-            new_data = {field: st.session_state.form_data[field] for field in ALL_FIELDS}
-            save_to_database(new_data)
-            st.session_state.form_data = {key: None for key in ALL_FIELDS.keys()}
-            st.experimental_rerun()
-
-    with col2:
-        if st.button('Clear', key='clear_button', use_container_width=True):
-            st.session_state.form_data = {key: None for key in ALL_FIELDS.keys()}
-            st.success('Form cleared.')
-            st.rerun()
-
-if __name__ == '__main__':
-    main()
+Remember to install the necessary dependencies (Vue 3) and set up your development environment. You can use Vue CLI or Vite to quickly set up a new Vue 3 project and then replace the generated files with these components
