@@ -1,116 +1,88 @@
-import win32gui
-import win32ui
-import win32con
-import win32api
-from PIL import Image
+import pygetwindow as gw
 import time
+import pyautogui
+from PIL import ImageGrab, Image
+import io
+from selenium import webdriver
 
-def capture_window(hwnd, x, y, width, height):
-    try:
-        # Get the window's device context
-        window_dc = win32gui.GetWindowDC(hwnd)
-        mfc_dc = win32ui.CreateDCFromHandle(window_dc)
-        save_dc = mfc_dc.CreateCompatibleDC()
-        
-        # Create a bitmap to hold the screenshot
-        bitmap = win32ui.CreateBitmap()
-        bitmap.CreateCompatibleBitmap(mfc_dc, width, height)
-        save_dc.SelectObject(bitmap)
-        
-        # Copy the window's device context to the bitmap
-        save_dc.BitBlt((0, 0), (width, height), mfc_dc, (x, y), win32con.SRCCOPY)
-        
-        # Save the bitmap to a file
-        bitmap_info = bitmap.GetInfo()
-        bitmap_str = bitmap.GetBitmapBits(True)
-        img = Image.frombuffer(
-            'RGB',
-            (bitmap_info['bmWidth'], bitmap_info['bmHeight']),
-            bitmap_str, 'raw', 'BGRX', 0, 1
-        )
-        
-        return img
-        
-    finally:
-        # Clean up resources
-        try:
-            if save_dc:
-                save_dc.DeleteDC()
-            if bitmap:
-                win32gui.DeleteObject(bitmap.GetHandle())
-            if mfc_dc:
-                mfc_dc.DeleteDC()
-            if window_dc:
-                win32gui.ReleaseDC(hwnd, window_dc)
-        except Exception as e:
-            print(f"Error during resource cleanup: {e}")
+def get_active_window():
+    active_window = gw.getActiveWindow()
+    if active_window:
+        return active_window.title
+    return None
 
-def scroll_window(hwnd, direction, amount):
-    # Scroll the window content in the specified direction
-    if direction == 'vertical':
-        win32gui.SendMessage(hwnd, win32con.WM_VSCROLL, win32con.SB_LINEDOWN * amount, None)
-    elif direction == 'horizontal':
-        win32gui.SendMessage(hwnd, win32con.WM_HSCROLL, win32con.SB_LINERIGHT * amount, None)
-
-def is_window_scrollable(hwnd):
-    # Get the window style
-    style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
+def capture_screenshot_window(window_title):
+    # Get the dimensions of the active window
+    window = gw.getWindowsWithTitle(window_title)[0]
+    left, top, right, bottom = window.left, window.top, window.right, window.bottom
+    screenshot = pyautogui.screenshot(region=(left, top, right - left, bottom - top))
     
-    # Check if vertical or horizontal scroll bars are present
-    has_vertical_scroll = style & win32con.WS_VSCROLL
-    has_horizontal_scroll = style & win32con.WS_HSCROLL
-    print(f"It is {has_vertical_scroll} and {has_horizontal_scroll}")
-    return has_vertical_scroll or has_horizontal_scroll
+    # Save the screenshot with a timestamp
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    print(window_title)
+    window_title_name = window_title.split("|")[0].split("/")[0]
+    screenshot.save(f"screenshot_{window_title_name}_{timestamp}.png")
+    print(f"Screenshot saved for {window_title} at {timestamp}")
 
-def capture_full_window(hwnd):
-    try:
-        # Get the window's dimensions
-        left, top, right, bot = win32gui.GetClientRect(hwnd)
-        width = right - left
-        height = bot - top
+def monitor_active_window():
+    last_active_window = None
+    while True:
+        active_window = get_active_window()
+        if active_window and active_window != last_active_window:
+            print(f"Active application changed to: {active_window}")
+            capture_screenshot_window(active_window)
+            last_active_window = active_window
+        time.sleep(2)
+
+def capture_full_page_screenshot(driver):
+    total_height = driver.execute_script("return document.body.scrollHeight")
+    viewport_height = driver.execute_script("return window.innerHeight")
+    stitched_image = Image.new('RGB', (driver.execute_script("return document.body.scrollWidth"), total_height))
+
+    # Scroll and capture screenshots
+    offset = 0
+
+    while offset < total_height:
+        driver.execute_script(f"window.scrollTo(0, {offset});")
+        delay = 0.5
+        time.sleep(delay)  # Allow some time for scrolling
+        screenshot = driver.get_screenshot_as_png()
+        screenshot = Image.open(io.BytesIO(screenshot))
         
-        # Initial capture
-        full_image = capture_window(hwnd, 0, 0, width, height)
-        
-        if is_window_scrollable(hwnd):
-            # Scrollable content capture
-            scroll_amount = 100  # Adjust based on scrolling sensitivity
-            images = [full_image]
-            while True:
-                scroll_window(hwnd, 'vertical', scroll_amount)
-                img = capture_window(hwnd, 0, 0, width, height)
-                if img.tobytes() == images[-1].tobytes():
-                    break  # No more new content to capture
-                images.append(img)
-            
-            # Stitch images together
-            total_height = sum(image.height for image in images)
-            full_img = Image.new('RGB', (width, total_height))
-            y_offset = 0
-            for img in images:
-                full_img.paste(img, (0, y_offset))
-                y_offset += img.height
-        else:
-            # Non-scrollable content capture
-            full_img = full_image
-        
-        # Save the stitched image
-        full_img.save('hello__full_screenshot.png')
+        stitched_image.paste(screenshot, (0, offset))
+        offset += viewport_height
+
+    # Save the final stitched image
+    stitched_image_path = f"page_screenshot_{delay}.png"
+    stitched_image.save(stitched_image_path)
+
+# The functions below are defined but never integrated into the flow.
+# Implement these if requird
+def track_user_interaction(url):
+    driver = webdriver.Chrome()
+    driver.get(url)
     
-    except Exception as e:
-        print(f"Error during capture: {e}")
+    while True:
+        # Check for login status
+        login_status = check_login_status(driver)
+        if login_status:
+            print("User logged in, starting tracking.")
+            start_tracking(driver)
+        time.sleep(1)
 
-def main():
-    try:
-        # Get the handle of the currently active window
-        time.sleep(5)
-        hwnd = win32gui.GetForegroundWindow()
-        if hwnd:
-            capture_full_window(hwnd)
-        else:
-            print("No active window found.")
-    except Exception as e:
-        print(f"Error in main function: {e}")
+def start_tracking(driver):
+    while True:
+        # Check if submit button is clicked
+        if submit_button_clicked(driver):
+            capture_full_page_screenshot(driver)
+            break
+        time.sleep(1)
 
-if __name__ == "__main__":
-    main()
+def check_login_status(driver):
+    return True
+
+def submit_button_clicked(driver):
+    return True
+
+# Start monitoring the active window
+monitor_active_window()
