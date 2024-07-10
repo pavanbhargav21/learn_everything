@@ -1,150 +1,116 @@
-To display different layouts or forms for each tab, you can still use `v-tabs` and `v-tabs-items` to manage the tabs and their content. You can define separate components or layouts for each tab and render them conditionally based on the active tab.
+import win32gui
+import win32ui
+import win32con
+import win32api
+import ctypes
+from ctypes import wintypes
+import sys
+import os
+import mss
+import mss.tools
+from PIL import Image
+import time
+time.sleep(5)
+def debug_print(message):
+    print(f"DEBUG: {message}")
+    sys.stdout.flush()
 
-Here's an example:
+def capture_window_ex(hwnd):
+    # Get window dimensions
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    width = right - left
+    height = bottom - top
 
-```vue
-<template>
-  <v-app>
-    <v-container>
-      <v-tabs v-model="activeTab" grow>
-        <v-tab>Pavan</v-tab>
-        <v-tab>Bhargav</v-tab>
-        <v-tab>Reddy</v-tab>
-      </v-tabs>
+    # Get window DC and create a memory DC
+    hwndDC = win32gui.GetWindowDC(hwnd)
+    mfcDC = win32ui.CreateDCFromHandle(hwndDC)
+    saveDC = mfcDC.CreateCompatibleDC()
 
-      <v-tabs-items v-model="activeTab">
-        <v-tab-item>
-          <PavanForm />
-        </v-tab-item>
-        <v-tab-item>
-          <BhargavLayout />
-        </v-tab-item>
-        <v-tab-item>
-          <ReddyLayout />
-        </v-tab-item>
-      </v-tabs-items>
-    </v-container>
-  </v-app>
-</template>
+    # Create a bitmap and select it into the memory DC
+    saveBitMap = win32ui.CreateBitmap()
+    saveBitMap.CreateCompatibleBitmap(mfcDC, width, height)
+    saveDC.SelectObject(saveBitMap)
 
-<script>
-import PavanForm from './components/PavanForm.vue';
-import BhargavLayout from './components/BhargavLayout.vue';
-import ReddyLayout from './components/ReddyLayout.vue';
+    # Capture the window using PrintWindow
+    result = ctypes.windll.user32.PrintWindow(hwnd, saveDC.GetSafeHdc(), 2)
+    debug_print(f"PrintWindow result: {result}")
 
-export default {
-  data() {
-    return {
-      activeTab: 0
-    };
-  },
-  components: {
-    PavanForm,
-    BhargavLayout,
-    ReddyLayout
-  }
-};
-</script>
+    # Convert the bitmap to a PIL Image
+    bmpinfo = saveBitMap.GetInfo()
+    bmpstr = saveBitMap.GetBitmapBits(True)
+    img = Image.frombuffer(
+        'RGB',
+        (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
+        bmpstr, 'raw', 'BGRX', 0, 1)
 
-<style>
-  /* Add any necessary styles here */
-</style>
-```
+    # Clean up
+    win32gui.DeleteObject(saveBitMap.GetHandle())
+    saveDC.DeleteDC()
+    mfcDC.DeleteDC()
+    win32gui.ReleaseDC(hwnd, hwndDC)
 
-### Components
+    return img
 
-**PavanForm.vue**
+def capture_active_window():
+    try:
+        debug_print("Starting capture process...")
+        
+        hwnd = win32gui.GetForegroundWindow()
+        if not hwnd:
+            debug_print("No active window found.")
+            return
 
-```vue
-<template>
-  <v-card flat>
-    <v-card-text>
-      <h3>Pavan's Form</h3>
-      <v-form>
-        <v-text-field label="Name"></v-text-field>
-        <v-text-field label="Email"></v-text-field>
-        <v-btn type="submit">Submit</v-btn>
-      </v-form>
-    </v-card-text>
-  </v-card>
-</template>
+        debug_print(f"Active window handle: {hwnd}")
+        window_text = win32gui.GetWindowText(hwnd)
+        debug_print(f"Active window title: {window_text}")
 
-<script>
-export default {
-  name: 'PavanForm'
-};
-</script>
+        # Method 1: Custom PrintWindow capture
+        debug_print("Attempting custom PrintWindow capture...")
+        img = capture_window_ex(hwnd)
+        img.save('custom_printwindow_screenshot.png')
+        debug_print(f"Custom PrintWindow screenshot saved. Size: {os.path.getsize('custom_printwindow_screenshot.png')} bytes")
 
-<style>
-  /* Add any necessary styles here */
-</style>
-```
+        # Method 2: MSS capture
+        debug_print("Attempting MSS capture...")
+        with mss.mss() as sct:
+            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+            monitor = {"top": top, "left": left, "width": right-left, "height": bottom-top}
+            screenshot = sct.grab(monitor)
+            mss.tools.to_png(screenshot.rgb, screenshot.size, output="mss_screenshot.png")
+        debug_print(f"MSS screenshot saved. Size: {os.path.getsize('mss_screenshot.png')} bytes")
 
-**BhargavLayout.vue**
+        # Method 3: Win32 BitBlt (for comparison)
+        debug_print("Attempting Win32 BitBlt capture...")
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        width = right - left
+        height = bottom - top
+        
+        hwndDC = win32gui.GetWindowDC(hwnd)
+        mfcDC = win32ui.CreateDCFromHandle(hwndDC)
+        saveDC = mfcDC.CreateCompatibleDC()
+        saveBitMap = win32ui.CreateBitmap()
+        saveBitMap.CreateCompatibleBitmap(mfcDC, width, height)
+        saveDC.SelectObject(saveBitMap)
+        
+        result = saveDC.BitBlt((0, 0), (width, height), mfcDC, (0, 0), win32con.SRCCOPY)
+        if result:
+            debug_print("BitBlt successful.")
+            saveBitMap.SaveBitmapFile(saveDC, 'bitblt_screenshot.bmp')
+            debug_print(f"BitBlt screenshot saved. Size: {os.path.getsize('bitblt_screenshot.bmp')} bytes")
+        else:
+            debug_print("BitBlt failed.")
 
-```vue
-<template>
-  <v-card flat>
-    <v-card-text>
-      <h3>Bhargav's Layout</h3>
-      <v-row>
-        <v-col>
-          <v-alert type="info">This is an info alert</v-alert>
-        </v-col>
-        <v-col>
-          <v-alert type="warning">This is a warning alert</v-alert>
-        </v-col>
-      </v-row>
-    </v-card-text>
-  </v-card>
-</template>
+        # Clean up
+        win32gui.DeleteObject(saveBitMap.GetHandle())
+        saveDC.DeleteDC()
+        mfcDC.DeleteDC()
+        win32gui.ReleaseDC(hwnd, hwndDC)
 
-<script>
-export default {
-  name: 'BhargavLayout'
-};
-</script>
+    except Exception as e:
+        debug_print(f"Error occurred: {str(e)}")
+        import traceback
+        debug_print(traceback.format_exc())
 
-<style>
-  /* Add any necessary styles here */
-</style>
-```
-
-**ReddyLayout.vue**
-
-```vue
-<template>
-  <v-card flat>
-    <v-card-text>
-      <h3>Reddy's Layout</h3>
-      <v-row>
-        <v-col>
-          <v-text-field label="Address"></v-text-field>
-        </v-col>
-        <v-col>
-          <v-text-field label="Phone"></v-text-field>
-        </v-col>
-      </v-row>
-      <v-btn type="submit">Save</v-btn>
-    </v-card-text>
-  </v-card>
-</template>
-
-<script>
-export default {
-  name: 'ReddyLayout'
-};
-</script>
-
-<style>
-  /* Add any necessary styles here */
-</style>
-```
-
-### Explanation
-
-1. **Main Component**: The main Vue component uses `v-tabs` to create the tabs and `v-tabs-items` to manage the tab content.
-2. **Child Components**: Separate components (`PavanForm`, `BhargavLayout`, `ReddyLayout`) are created for each tab's content.
-3. **Conditional Rendering**: The tab content is rendered conditionally based on the active tab, allowing for different layouts and forms in each tab.
-
-This approach ensures that each tab can have a completely different layout or form, making the application more modular and maintainable.
+if __name__ == "__main__":
+    capture_active_window()
+    input("Press Enter to exit...")
