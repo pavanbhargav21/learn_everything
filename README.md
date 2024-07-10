@@ -1,54 +1,1350 @@
-import os
-import pygetwindow as gw
-import pyautogui
 import time
-from PIL import Image
+import threading
+import pyautogui
+import pygetwindow
 
-# Create a directory to store screenshots
-image_dir = 'image_dir'
-if not os.path.exists(image_dir):
-    os.makedirs(image_dir)
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
 
-def capture_screenshots_while_scrolling():
-    # Get active browser window
-    browser_window = gw.getActiveWindow()
-
-    if browser_window:
-        # Get browser window dimensions
-        browser_x, browser_y = browser_window.left, browser_window.top
-        browser_width, browser_height = browser_window.width, browser_window.height
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 9  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
         
-        print(f"Browser Window: x={browser_x}, y={browser_y}, width={browser_width}, height={browser_height}")
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
 
-        # Getting total height of the webpage using a large scroll value
-        total_height = 10000  # Adjust as needed to cover the entire webpage height
-        
-        scroll_y = 0
-        screenshot_height = browser_height  # Height of each screenshot capture
-        
-        while scroll_y < total_height:
-            # Scroll down by the height of the screen
-            pyautogui.moveTo(browser_x + 100, browser_y + scroll_y + 100)  # Adjust the offset as per your screen resolution.
-            pyautogui.scroll(-screenshot_height)  # Scroll down by screenshot height pixels
-            
-            time.sleep(0.5)  # Adjust as needed
-            
-            # Capture screenshot of current view
-            screenshot = pyautogui.screenshot(region=(browser_x, browser_y, browser_width, browser_height))
-            
-            # Save screenshot to image directory with a timestamp
-            timestamp = time.strftime("%Y%m%d-%H%M%S")
-            screenshot_path = os.path.join(image_dir, f"screenshot_{timestamp}.png")
-            screenshot.save(screenshot_path)
-            
-            print(f"Saved screenshot at: {screenshot_path}")
-            
-            # Update scroll position
-            scroll_y += screenshot_height
-        
-        print("All screenshots saved successfully.")
-    else:
-        print("No active browser window found.")
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
 
-# Example usage
-capture_screenshots_while_scrolling()
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
+import time
+import threading
+import pyautogui
+import pygetwindow
+
+# Function to find and activate the active Visual Studio Code window
+def find_active_vscode_window():
+    vscode_window = pygetwindow.getWindowsWithTitle('Visual Studio Code')[0]
+    vscode_window.activate()
+    return vscode_window
+
+# Function to continuously scroll and capture content of the active window
+def scroll_and_capture_content():
+    vscode_window = find_active_vscode_window()
+    total_lines = 1200  # Example: Total lines in the active window
+    visible_lines = 90  # Example: Number of visible lines in the window
+    
+    # Calculate how many scrolls are needed to capture all lines
+    num_scrolls = (total_lines // visible_lines) + 1
+    
+    for _ in range(num_scrolls):
+        # Scroll down (adjust as needed)
+        pyautogui.scroll(-visible_lines)
+        
+        # Capture screenshot of the entire window
+        screenshot = pyautogui.screenshot(region=vscode_window.box)
+        screenshot.save(f'vscode_capture_scroll{_}.png')  # Example: Save screenshot
+    
+        # Adjust sleep time as needed to control scroll rate
+        time.sleep(1)  # Adjust as needed
+
+# Function to run scrolling and capturing in a separate thread
+def run_scroll_capture_thread():
+    scroll_thread = threading.Thread(target=scroll_and_capture_content)
+    scroll_thread.daemon = True  # Thread will terminate when main program exits
+    scroll_thread.start()
+
+# Main function (simulating your work in Visual Studio Code)
+def main():
+    # Simulate working in Visual Studio Code
+    while True:
+        print("Writing code in Visual Studio Code...")
+        time.sleep(5)  # Simulate work interval (adjust as needed)
+
+if __name__ == "__main__":
+    # Start scrolling and capturing in a separate thread
+    run_scroll_capture_thread()
+    
+    # Run main function (simulating work in Visual Studio Code)
+    main()
