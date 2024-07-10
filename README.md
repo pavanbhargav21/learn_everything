@@ -1,52 +1,72 @@
-import pyautogui
 import time
-from PIL import Image, ImageGrab
+import ctypes
+from pywinauto import Desktop
+from PIL import ImageGrab, Image
+import pyautogui
 import os
-import pygetwindow as gw
 
+def get_foreground_window():
+    hwnd = ctypes.windll.user32.GetForegroundWindow()
+    return Desktop(backend="uia").window(handle=hwnd)
 
-time.sleep(5)
-# Function to save each image to a directory
-def save_image(img, directory, file_name):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    img.save(os.path.join(directory, file_name))
+def capture_entire_window(window):
+    window.set_focus()
 
-# Directory to save individual screenshots
-save_directory = '0207_screenshots'
+    # Get the initial visible part
+    rect = window.rectangle()
+    visible_width = rect.width()
+    visible_height = rect.height()
 
-# Get the currently active window
-window = gw.getActiveWindow()
-if window is None:
-    raise Exception("No active window found")
+    # Scroll down to the bottom and measure the total height
+    pyautogui.scroll(-9999)  # Scroll down to the bottom
+    time.sleep(1)
+    bottom_rect = window.rectangle()
+    total_height = bottom_rect.height()
 
-# Initialize y_offset and total_height (replace with actual total height)
-y_offset = 0
-total_height = 1000  # Example total height of the page
-window_height = window.height
+    # Scroll back to the top
+    pyautogui.scroll(9999)
+    time.sleep(1)
 
-# Create a full image to paste smaller screenshots
-full_image = Image.new('RGB', (window.width, total_height))
+    # Scroll right to the end and measure the total width
+    pyautogui.hscroll(-9999)  # Scroll right to the end
+    time.sleep(1)
+    right_rect = window.rectangle()
+    total_width = right_rect.width()
 
-# Scroll vertically and capture screenshots
-while y_offset < total_height:
-    window.activate()
-    img = ImageGrab.grab(bbox=(window.left, window.top, window.right, window.bottom))
-    
-    # Paste the captured image into the full image
-    full_image.paste(img, (0, y_offset))
-    
-    # Save each captured image to the directory
-    file_name = f'screenshot_{y_offset}.png'
-    save_image(img, save_directory, file_name)
-    print(f'Screenshot saved: {file_name}')
+    # Scroll back to the left
+    pyautogui.hscroll(9999)
+    time.sleep(1)
 
-    y_offset += window_height
-    
-    # Scroll down
-    pyautogui.scroll(-window_height // 2)
-    time.sleep(1)  # Wait for scrolling to complete
+    # Create a blank image with the total size
+    full_image = Image.new('RGB', (total_width, total_height))
+    full_image.save(f"blank_title.png")
+    # Variables to track the current position in the full image
+    y_offset = 0
 
-# Save the full stitched image
-full_image.save('foreground_full_screenshot.png')
-print('Full screenshot saved: full_screenshot.png')
+    # Scroll vertically and capture screenshots
+    while y_offset < total_height:
+        window.set_focus()
+        img = ImageGrab.grab(bbox=(window.rectangle().left, window.rectangle().top, window.rectangle().right, window.rectangle().bottom))
+        full_image.paste(img, (0, y_offset))
+
+        y_offset += visible_height
+        pyautogui.scroll(-visible_height)
+        time.sleep(1)  # Wait for scrolling to complete
+
+    # Save the final stitched image
+    window_title = window.window_text().replace(" ", "_").replace(":", "").replace("\\", "").replace("/", "")
+    os.makedirs("screenshots_sc", exist_ok=True)
+    full_image.save(f"screenshots_sc/{window_title}.png")
+
+def main():
+    previous_window = None
+    while True:
+        current_window = get_foreground_window()
+        if current_window != previous_window:
+            if previous_window is not None:
+                capture_entire_window(previous_window)
+            previous_window = current_window
+        time.sleep(1)
+
+if __name__ == "__main__":
+    main()
