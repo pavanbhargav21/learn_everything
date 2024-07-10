@@ -1,88 +1,65 @@
-import pygetwindow as gw
-import time
-import pyautogui
-from PIL import ImageGrab, Image
-import io
-from selenium import webdriver
+There are several libraries in Python that you can use to capture an image of a present window with full high definition. Here are a few popular ones:
 
-def get_active_window():
-    active_window = gw.getActiveWindow()
-    if active_window:
-        return active_window.title
-    return None
+1. **PyAutoGUI**: A cross-platform GUI automation library that allows you to control the mouse and keyboard, as well as capture screenshots.
 
-def capture_screenshot_window(window_title):
-    # Get the dimensions of the active window
-    window = gw.getWindowsWithTitle(window_title)[0]
-    left, top, right, bottom = window.left, window.top, window.right, window.bottom
-    screenshot = pyautogui.screenshot(region=(left, top, right - left, bottom - top))
-    
-    # Save the screenshot with a timestamp
-    timestamp = time.strftime("%Y%m%d-%H%M%S")
-    print(window_title)
-    window_title_name = window_title.split("|")[0].split("/")[0]
-    screenshot.save(f"screenshot_{window_title_name}_{timestamp}.png")
-    print(f"Screenshot saved for {window_title} at {timestamp}")
+   ```python
+   import pyautogui
+   screenshot = pyautogui.screenshot()
+   screenshot.save('screenshot.png')
+   ```
 
-def monitor_active_window():
-    last_active_window = None
-    while True:
-        active_window = get_active_window()
-        if active_window and active_window != last_active_window:
-            print(f"Active application changed to: {active_window}")
-            capture_screenshot_window(active_window)
-            last_active_window = active_window
-        time.sleep(2)
+2. **Pillow**: A Python Imaging Library (PIL) fork that adds image processing capabilities. Often used in combination with other libraries to capture and process screenshots.
 
-def capture_full_page_screenshot(driver):
-    total_height = driver.execute_script("return document.body.scrollHeight")
-    viewport_height = driver.execute_script("return window.innerHeight")
-    stitched_image = Image.new('RGB', (driver.execute_script("return document.body.scrollWidth"), total_height))
+   ```python
+   from PIL import ImageGrab
+   screenshot = ImageGrab.grab()
+   screenshot.save('screenshot.png')
+   ```
 
-    # Scroll and capture screenshots
-    offset = 0
+3. **mss**: A cross-platform library specifically designed for capturing screenshots. It's known for being fast and lightweight.
 
-    while offset < total_height:
-        driver.execute_script(f"window.scrollTo(0, {offset});")
-        delay = 0.5
-        time.sleep(delay)  # Allow some time for scrolling
-        screenshot = driver.get_screenshot_as_png()
-        screenshot = Image.open(io.BytesIO(screenshot))
-        
-        stitched_image.paste(screenshot, (0, offset))
-        offset += viewport_height
+   ```python
+   import mss
+   with mss.mss() as sct:
+       sct.shot(output='screenshot.png')
+   ```
 
-    # Save the final stitched image
-    stitched_image_path = f"page_screenshot_{delay}.png"
-    stitched_image.save(stitched_image_path)
+4. **opencv-python**: A library for computer vision that can be used for image capture and processing.
 
-# The functions below are defined but never integrated into the flow.
-# Implement these if requird
-def track_user_interaction(url):
-    driver = webdriver.Chrome()
-    driver.get(url)
-    
-    while True:
-        # Check for login status
-        login_status = check_login_status(driver)
-        if login_status:
-            print("User logged in, starting tracking.")
-            start_tracking(driver)
-        time.sleep(1)
+   ```python
+   import cv2
+   import numpy as np
+   from PIL import ImageGrab
 
-def start_tracking(driver):
-    while True:
-        # Check if submit button is clicked
-        if submit_button_clicked(driver):
-            capture_full_page_screenshot(driver)
-            break
-        time.sleep(1)
+   img = ImageGrab.grab()
+   img_np = np.array(img)
+   frame = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
+   cv2.imwrite('screenshot.png', frame)
+   ```
 
-def check_login_status(driver):
-    return True
+5. **PyQt5 or PySide2**: If you are working with a GUI application built with these libraries, they provide methods to capture screenshots of their windows.
 
-def submit_button_clicked(driver):
-    return True
+   ```python
+   from PyQt5.QtWidgets import QApplication
+   from PyQt5.QtGui import QScreen
+   import sys
 
-# Start monitoring the active window
-monitor_active_window()
+   app = QApplication(sys.argv)
+   screen = QApplication.primaryScreen()
+   screenshot = screen.grabWindow(0)
+   screenshot.save('screenshot.png', 'png')
+   ```
+
+6. **pygetwindow**: A library for getting information about windows and interacting with them. It can be used in combination with other libraries like Pillow or mss for capturing specific windows.
+
+   ```python
+   import pygetwindow as gw
+   from PIL import ImageGrab
+
+   window = gw.getWindowsWithTitle('Window Title')[0]
+   bbox = window.left, window.top, window.right, window.bottom
+   screenshot = ImageGrab.grab(bbox=bbox)
+   screenshot.save('screenshot.png')
+   ```
+
+Each of these libraries has its strengths and specific use cases, so the best choice depends on your particular requirements and the environment in which you are working.
