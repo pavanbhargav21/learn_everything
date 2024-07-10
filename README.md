@@ -1,60 +1,72 @@
-import pyautogui
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.action_chains import ActionChains
+from webdriver_manager.chrome import ChromeDriverManager
 import time
-from PIL import Image, ImageGrab
-import os
-import pygetwindow as gw
+from PIL import Image
+import io
 
-time.sleep(5)
-# Function to save each image to a directory
-def save_image(img, directory, file_name):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    img.save(os.path.join(directory, file_name))
+USERNAME="pavanbhargav21"
+PASSWORD="Chintunani@2121"
 
-# Directory to save individual screenshots
-save_directory = '0207_screenshots'
 
-# Get the currently active window
-window = gw.getActiveWindow()
-if window is None:
-    raise Exception("No active window found")
+# Set up Chrome options
+chrome_options = Options()
+#chrome_options.add_argument("--headless")  # Run in headless mode for no GUI
+#chrome_options.add_argument("--disable-gpu")
 
-# Store the initial window state
-was_minimized = window.isMinimized
-if was_minimized:
-    window.restore()
+# Initialize WebDriver
+service = Service(ChromeDriverManager().install())
+driver = webdriver.Chrome(service=service, options=chrome_options)
 
-# Initialize y_offset and total_height (replace with actual total height)
-y_offset = 0
-total_height = 10000000  # Example total height of the page
-window_height = window.height
+try:
+    # Open GitHub login page
+    driver.get("https://www.hsbc.co.in/loans/products/personal/")
 
-# Create a full image to paste smaller screenshots
-full_image = Image.new('RGB', (window.width, total_height))
+    # # Find the username and password input fields
+    # username_input = driver.find_element(By.ID, "login_field")
+    # password_input = driver.find_element(By.ID, "password")
 
-# Scroll vertically and capture screenshots
-while y_offset < total_height:
-    window.activate()
-    img = ImageGrab.grab(bbox=(window.left, window.top, window.right, window.bottom))
-    
-    # Paste the captured image into the full image
-    full_image.paste(img, (0, y_offset))
-    
-    # Save each captured image to the directory
-    file_name = f'screenshot_{y_offset}.png'
-    save_image(img, save_directory, file_name)
-    print(f'Screenshot saved: {file_name}')
+    # # Enter your credentials
+    # username_input.send_keys(USERNAME)
+    # password_input.send_keys(PASSWORD)
 
-    y_offset += window_height
-    
-    # Scroll down in smaller increments for smooth scrolling
-    pyautogui.scroll(-window_height // 4)
-    #time.sleep(0.1)  # Adjust for smooth scrolling (milliseconds)
+    # # Find and click the login button
+    # login_button = driver.find_element(By.NAME, "commit")
+    # login_button.click()
 
-# Restore the window state if it was initially minimized
-if was_minimized:
-    window.minimize()
+    # Wait for a while to let the login process complete
+    time.sleep(2)
 
-# Save the full stitched image
-full_image.save('foreground_full_screenshot.png')
-print('Full screenshot saved: foreground_full_screenshot.png')
+    print("Let's say Monitoring started or Tracking .... ")
+
+    total_height = driver.execute_script("return document.body.scrollHeight")
+    viewport_height = driver.execute_script("return window.innerHeight")
+    print(driver.execute_script("return document.body.scrollWidth"), total_height)
+    # Initialize the stitched image
+    stitched_image = Image.new('RGB', (driver.execute_script("return document.body.scrollWidth"), total_height))
+
+    # Scroll and capture screenshots
+    offset = 0
+    while offset < total_height:
+        driver.execute_script(f"window.scrollTo(0, {offset});")
+        delay=0.001
+        time.sleep(delay)  # Allow some time for scrolling
+        screenshot = driver.get_screenshot_as_png()
+        screenshot = Image.open(io.BytesIO(screenshot))
+        
+        stitched_image.paste(screenshot, (0, offset))
+        offset += viewport_height
+
+    # Save the final stitched image
+    stitched_image_path = f"sele_full_page_screenshot_{delay}.png"
+    stitched_image.save(stitched_image_path)
+
+
+finally:
+    # Quit the driver
+    driver.quit()
+
