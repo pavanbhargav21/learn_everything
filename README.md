@@ -1,57 +1,80 @@
-import win32gui
-import win32ui
-import win32con
-import win32api
 import time
+import ctypes
+from pywinauto import Desktop
+from PIL import ImageGrab, Image
+import pyautogui
+import os
 
-def capture_active_window():
-    try:
-        # Get the handle to the active window
-        hwnd = win32gui.GetForegroundWindow()
 
-        if hwnd:
-            print("Active window handle retrieved successfully.")
+def get_foreground_window():
+    hwnd = ctypes.windll.user32.GetForegroundWindow()
+    return Desktop(backend="uia").window(handle=hwnd)
 
-            # Get the entire window dimensions
-            left, top, right, bot = win32gui.GetWindowRect(hwnd)
-            width = right - left
-            height = bot - top
-            print(f"Entire window dimensions: ({left}, {top}) to ({right}, {bot})")
-            print(f"Entire window size: {width} x {height}")
+def get_total_scrollable_size(window):
+    # Focus the window
+    window.set_focus()
+    
+    # Get the initial visible part
+    rect = window.rectangle()
+    visible_height = rect.height()
+    visible_width = rect.width()
 
-            # Create a device context for the entire window
-            hwindc = win32gui.GetWindowDC(hwnd)
-            srcdc = win32ui.CreateDCFromHandle(hwindc)
-            memdc = srcdc.CreateCompatibleDC()
+    # Scroll down to the bottom and measure the total height
+    pyautogui.scroll(-9999)  # Scroll down to the bottom
+    time.sleep(1)
+    bottom_rect = window.rectangle()
+    total_height = bottom_rect.height()
 
-            # Create a bitmap compatible with the window's device context
-            bmp = win32ui.CreateBitmap()
-            bmp.CreateCompatibleBitmap(srcdc, width, height)
-            memdc.SelectObject(bmp)
+    # Scroll back to the top
+    pyautogui.scroll(9999)
+    time.sleep(1)
 
-            # Add a delay before capturing
-            time.sleep(1)  # Adjust as needed (e.g., 1 second)
+    # Scroll right to the end and measure the total width
+    pyautogui.hscroll(-9999)  # Scroll right to the end
+    time.sleep(1)
+    right_rect = window.rectangle()
+    total_width = right_rect.width()
 
-            # Perform a BitBlt operation to copy the window content to the bitmap
-            if not memdc.BitBlt((0, 0), (width, height), srcdc, (0, 0), win32con.SRCCOPY):
-                raise RuntimeError("BitBlt operation failed.")
-            print("BitBlt operation successful.")
+    # Scroll back to the left
+    pyautogui.hscroll(9999)
+    time.sleep(1)
 
-            # Save the bitmap to a file
-            bmp.SaveBitmapFile(memdc, 'full_window_screenshot.bmp')
-            print("Bitmap saved successfully.")
+    return total_width, total_height
 
-            # Release resources
-            srcdc.DeleteDC()
-            memdc.DeleteDC()
-            win32gui.ReleaseDC(hwnd, hwindc)
-            win32gui.DeleteObject(bmp.GetHandle())
+def capture_entire_window(window):
+    total_width, total_height = get_total_scrollable_size(window)
 
-            print("Resources released.")
-        else:
-            print("No active window found.")
-    except Exception as e:
-        print(f"Error occurred: {str(e)}")
+    # Create a blank image with the total size
+    full_image = Image.new('RGB', (total_width, total_height))
 
-# Example usage:
-capture_active_window()
+    # Variables to track the current position in the full image
+    y_offset = 0
+
+    # Scroll vertically and capture screenshots
+    while y_offset < total_height:
+        window.set_focus()
+        img = ImageGrab.grab(bbox=(window.rectangle().left, window.rectangle().top, window.rectangle().right, window.rectangle().bottom))
+        full_image.paste(img, (0, y_offset))
+
+        y_offset += window.rectangle().height()
+        pyautogui.scroll(-window.rectangle().height())
+        time.sleep(1)  # Wait for scrolling to complete
+
+    # Save the final stitched image
+    window_title = window.window_text().replace(" ", "_").replace(":", "").replace("\\", "").replace("/", "")
+    os.makedirs("screenshots", exist_ok=True)
+    full_image.save(f"screenshots/{window_title}.png")
+
+def main():
+    previous_window = None
+    while True:
+        current_window = get_foreground_window()
+        if current_window != previous_window:
+            if previous_window is not None:
+                capture_entire_window(previous_window)
+            previous_window = current_window
+        time.sleep(1)
+
+if __name__ == "__main__":
+    main()
+
