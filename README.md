@@ -1,72 +1,54 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
-from webdriver_manager.chrome import ChromeDriverManager
+import os
+import pygetwindow as gw
+import pyautogui
 import time
 from PIL import Image
-import io
 
-USERNAME="pavanbhargav21"
-PASSWORD="Chintunani@2121"
+# Create a directory to store screenshots
+image_dir = 'image_dir'
+if not os.path.exists(image_dir):
+    os.makedirs(image_dir)
 
+def capture_screenshots_while_scrolling():
+    # Get active browser window
+    browser_window = gw.getActiveWindow()
 
-# Set up Chrome options
-chrome_options = Options()
-#chrome_options.add_argument("--headless")  # Run in headless mode for no GUI
-#chrome_options.add_argument("--disable-gpu")
-
-# Initialize WebDriver
-service = Service(ChromeDriverManager().install())
-driver = webdriver.Chrome(service=service, options=chrome_options)
-
-try:
-    # Open GitHub login page
-    driver.get("https://www.hsbc.co.in/loans/products/personal/")
-
-    # # Find the username and password input fields
-    # username_input = driver.find_element(By.ID, "login_field")
-    # password_input = driver.find_element(By.ID, "password")
-
-    # # Enter your credentials
-    # username_input.send_keys(USERNAME)
-    # password_input.send_keys(PASSWORD)
-
-    # # Find and click the login button
-    # login_button = driver.find_element(By.NAME, "commit")
-    # login_button.click()
-
-    # Wait for a while to let the login process complete
-    time.sleep(2)
-
-    print("Let's say Monitoring started or Tracking .... ")
-
-    total_height = driver.execute_script("return document.body.scrollHeight")
-    viewport_height = driver.execute_script("return window.innerHeight")
-    print(driver.execute_script("return document.body.scrollWidth"), total_height)
-    # Initialize the stitched image
-    stitched_image = Image.new('RGB', (driver.execute_script("return document.body.scrollWidth"), total_height))
-
-    # Scroll and capture screenshots
-    offset = 0
-    while offset < total_height:
-        driver.execute_script(f"window.scrollTo(0, {offset});")
-        delay=0.001
-        time.sleep(delay)  # Allow some time for scrolling
-        screenshot = driver.get_screenshot_as_png()
-        screenshot = Image.open(io.BytesIO(screenshot))
+    if browser_window:
+        # Get browser window dimensions
+        browser_x, browser_y = browser_window.left, browser_window.top
+        browser_width, browser_height = browser_window.width, browser_window.height
         
-        stitched_image.paste(screenshot, (0, offset))
-        offset += viewport_height
+        print(f"Browser Window: x={browser_x}, y={browser_y}, width={browser_width}, height={browser_height}")
 
-    # Save the final stitched image
-    stitched_image_path = f"sele_full_page_screenshot_{delay}.png"
-    stitched_image.save(stitched_image_path)
+        # Getting total height of the webpage using a large scroll value
+        total_height = 10000  # Adjust as needed to cover the entire webpage height
+        
+        scroll_y = 0
+        screenshot_height = browser_height  # Height of each screenshot capture
+        
+        while scroll_y < total_height:
+            # Scroll down by the height of the screen
+            pyautogui.moveTo(browser_x + 100, browser_y + scroll_y + 100)  # Adjust the offset as per your screen resolution.
+            pyautogui.scroll(-screenshot_height)  # Scroll down by screenshot height pixels
+            
+            time.sleep(0.5)  # Adjust as needed
+            
+            # Capture screenshot of current view
+            screenshot = pyautogui.screenshot(region=(browser_x, browser_y, browser_width, browser_height))
+            
+            # Save screenshot to image directory with a timestamp
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            screenshot_path = os.path.join(image_dir, f"screenshot_{timestamp}.png")
+            screenshot.save(screenshot_path)
+            
+            print(f"Saved screenshot at: {screenshot_path}")
+            
+            # Update scroll position
+            scroll_y += screenshot_height
+        
+        print("All screenshots saved successfully.")
+    else:
+        print("No active browser window found.")
 
-
-finally:
-    # Quit the driver
-    driver.quit()
-
+# Example usage
+capture_screenshots_while_scrolling()
