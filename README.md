@@ -921,3 +921,406 @@ if __name__ == '__main__':
    - When updating a whitelist entry, the `workflowid` is updated based on the `workflow.id` received from the frontend.
 
 By following this structure, the whitelist table is correctly updated in the database whenever an item is edited in the app store. The frontend uses `workflowname` for display purposes and `workflowid` for backend operations, ensuring the relationship between `workflows` and `whitelist` tables is maintained correctly.
+
+
+
+
+
+
+
+
+
+**************************PBR****************************************
+
+Updated Backend Code
+app/whitelist.py
+python
+Copy code
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource, reqparse
+from flask_jwt_extended import jwt_required
+from datetime import datetime
+from app.models import db, Whitelist, Workflow
+
+bp = Blueprint('whitelists', __name__, url_prefix='/api/whitelists')
+api = Api(bp)
+
+class WhitelistResource(Resource):
+    @jwt_required()
+    def get(self):
+        whitelists = Whitelist.query.all()
+        data = [{
+            'id': w.id,
+            'workflow_name': w.workflow_name,
+            'workflow_url': w.workflow_url,
+            'environment': w.environment,
+            'is_active': w.is_active,
+            'created_date': w.created_date,
+            'created_by': w.created_by,
+            'modified_date': w.modified_date,
+            'modified_by': w.modified_by,
+            'window_titles': w.window_titles
+        } for w in whitelists]
+        return jsonify(data)
+
+    @jwt_required()
+    def post(self):
+        data = request.get_json()
+        new_whitelist = Whitelist(
+            workflow_name=data['workflow_name'],
+            workflow_url=data['workflow_url'],
+            environment=data['environment'],
+            is_active=data['is_active'],
+            created_by=data['created_by'],
+            window_titles=data['window_titles'],
+            created_date=datetime.utcnow()
+        )
+        db.session.add(new_whitelist)
+        db.session.commit()
+        return jsonify({'message': 'Whitelist entry created successfully'}), 201
+
+class WhitelistDetailResource(Resource):
+    @jwt_required()
+    def put(self, id):
+        data = request.get_json()
+        whitelist = Whitelist.query.get(id)
+        if not whitelist:
+            return {'message': 'Whitelist entry not found'}, 404
+
+        whitelist.workflow_name = data['workflow_name']
+        whitelist.workflow_url = data['workflow_url']
+        whitelist.environment = data['environment']
+        whitelist.is_active = data['is_active']
+        whitelist.modified_by = data['modified_by']
+        whitelist.window_titles = data['window_titles']
+        whitelist.modified_date = datetime.utcnow()
+
+        db.session.commit()
+        return {'message': 'Whitelist entry updated successfully'}, 200
+
+    @jwt_required()
+    def delete(self, id):
+        whitelist = Whitelist.query.get(id)
+        if not whitelist:
+            return {'message': 'Whitelist entry not found'}, 404
+
+        db.session.delete(whitelist)
+        db.session.commit()
+        return {'message': 'Whitelist entry deleted successfully'}, 200
+
+api.add_resource(WhitelistResource, '/')
+api.add_resource(WhitelistDetailResource, '/<int:id>')
+app/workflows.py
+python
+Copy code
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_jwt_extended import jwt_required
+from datetime import datetime
+from app.models import db, Workflow
+
+bp = Blueprint('workflows', __name__, url_prefix='/api/workflows')
+api = Api(bp)
+
+class WorkflowResource(Resource):
+    @jwt_required()
+    def get(self):
+        workflows = Workflow.query.all()
+        data = [{
+            'id': w.id,
+            'workflow_name': w.workflow_name,
+            'system_name': w.system_name,
+            'system_version': w.system_version,
+            'is_feed': w.is_feed,
+            'is_extension_enabled': w.is_extension_enabled,
+            'layout_type': w.layout_type,
+            'is_active': w.is_active,
+            'created_date': w.created_date,
+            'created_by': w.created_by,
+            'modified_date': w.modified_date,
+            'modified_by': w.modified_by
+        } for w in workflows]
+        return jsonify(data)
+
+    @jwt_required()
+    def post(self):
+        data = request.get_json()
+        new_workflow = Workflow(
+            workflow_name=data['workflow_name'],
+            system_name=data['system_name'],
+            system_version=data['system_version'],
+            is_feed=data['is_feed'],
+            is_extension_enabled=data['is_extension_enabled'],
+            layout_type=data['layout_type'],
+            is_active=data['is_active'],
+            created_by=data['created_by'],
+            created_date=datetime.utcnow()
+        )
+        db.session.add(new_workflow)
+        db.session.commit()
+        return jsonify({'message': 'Workflow created successfully'}), 201
+
+class WorkflowDetailResource(Resource):
+    @jwt_required()
+    def put(self, id):
+        data = request.get_json()
+        workflow = Workflow.query.get(id)
+        if not workflow:
+            return {'message': 'Workflow entry not found'}, 404
+
+        workflow.workflow_name = data['workflow_name']
+        workflow.system_name = data['system_name']
+        workflow.system_version = data['system_version']
+        workflow.is_feed = data['is_feed']
+        workflow.is_extension_enabled = data['is_extension_enabled']
+        workflow.layout_type = data['layout_type']
+        workflow.is_active = data['is_active']
+        workflow.modified_by = data['modified_by']
+        workflow.modified_date = datetime.utcnow()
+
+        db.session.commit()
+        return {'message': 'Workflow entry updated successfully'}, 200
+
+    @jwt_required()
+    def delete(self, id):
+        workflow = Workflow.query.get(id)
+        if not workflow:
+            return {'message': 'Workflow entry not found'}, 404
+
+        db.session.delete(workflow)
+        db.session.commit()
+        return {'message': 'Workflow entry deleted successfully'}, 200
+
+api.add_resource(WorkflowResource, '/')
+api.add_resource(WorkflowDetailResource, '/<int:id>')
+Frontend Updates
+html
+Copy code
+<template>
+  <v-container>
+    <v-form @submit.prevent="submitForm">
+      <v-autocomplete
+        v-model="form.workflow_name"
+        :items="workflowNames"
+        item-text="workflow_name"
+        label="Workflow Name"
+        required
+      ></v-autocomplete>
+      <v-icon @click="openWorkflowDialog">mdi-plus</v-icon>
+
+      <v-text-field v-model="form.url" label="URL" required></v-text-field>
+      <v-text-field v-model="form.system" label="System" required></v-text-field>
+      <v-text-field v-model="form.layout" label="Layout" required></v-text-field>
+      <v-btn type="submit" color="primary">Submit</v-btn>
+    </v-form>
+
+    <v-dialog v-model="workflowDialog" max-width="500px">
+      <v-card>
+        <v-card-title>
+          <span class="headline">Add Workflow</span>
+        </v-card-title>
+        <v-card-text>
+          <v-form @submit.prevent="submitWorkflow">
+            <v-text-field v-model="newWorkflow.workflow_name" label="Workflow Name" required></v-text-field>
+            <v-text-field v-model="newWorkflow.system" label="System" required></v-text-field>
+            <v-btn type="submit" color="primary">Add</v-btn>
+          </v-form>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+  </v-container>
+</template>
+
+<script>
+import axios from 'axios';
+
+export default {
+  data() {
+    return {
+      form: {
+        workflow_name: '',
+        url: '',
+        system: '',
+        layout: ''
+      },
+      workflowNames: [],
+      workflowDialog: false,
+      newWorkflow: {
+        workflow_name: '',
+        system: ''
+      }
+    };
+  },
+  created() {
+    this.fetchWorkflowNames();
+  },
+  methods: {
+    async fetchWorkflowNames() {
+      try {
+        const response = await axios.get('/api/workflows/');
+        this.workflowNames = response.data;
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    async submitForm() {
+      try {
+        await axios.post('/api/whitelists/', this.form);
+        alert('Form submitted successfully');
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    async submitWorkflow() {
+      try {
+        await axios.post('/api/workflows/', this.newWorkflow);
+        this.workflowDialog = false;
+        this.fetchWorkflowNames();
+        alert('Workflow added successfully');
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    openWorkflowDialog() {
+      this.workflowDialog = true;
+    }
+  }
+};
+</script>
+models.py
+python
+Copy code
+from datetime import datetime
+from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy()
+
+class Whitelist(db.Model):
+    __tablename__ = 'whitelist'
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_name = db.Column(db.String(100), nullable=False)
+    workflow_url = db.Column(db.String(255), nullable=False)
+    environment = db.Column(db.String(100), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_date = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(100), nullable=False)
+    modified_date = db.Column(db.DateTime)
+    modified_by = db.Column(db.String(100))
+    window_titles = db.Column(db.String(255))
+
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+class Workflow(db.Model):
+    __tablename__ = 'workflow'
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_name = db.Column(db.String(100), nullable=False)
+    system_name = db.Column(db.String(100), nullable=False)
+    system_version = db.Column(db.String(100), nullable=False)
+```python
+    is_feed = db.Column(db.Boolean, default=False)
+    is_extension_enabled = db.Column(db.Boolean, default=False)
+    layout_type = db.Column(db.String(100), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_date = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(100), nullable=False)
+    modified_date = db.Column(db.DateTime)
+    modified_by = db.Column(db.String(100))
+
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+__init__.py
+python
+Copy code
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from flask_jwt_extended import JWTManager
+from config import Config
+
+db = SQLAlchemy()
+
+def create_app():
+    app = Flask(__name__)
+    app.config.from_object(Config)
+
+    db.init_app(app)
+    jwt = JWTManager(app)
+
+    from app.whitelist import bp as whitelist_bp
+    app.register_blueprint(whitelist_bp)
+
+    from app.workflows import bp as workflows_bp
+    app.register_blueprint(workflows_bp)
+
+    from auth import auth_bp
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+
+    return app
+config.py
+python
+Copy code
+import os
+
+class Config:
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'your_secret_key'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///app.db'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'your_jwt_secret_key'
+auth/routes.py
+python
+Copy code
+from flask import request
+from flask_restful import Resource
+from flask_jwt_extended import create_access_token, jwt_required, unset_jwt_cookies
+
+class LoginResource(Resource):
+    def post(self):
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+
+        # Implement your user authentication logic here
+        if username == 'test' and password == 'test':  # Example check
+            access_token = create_access_token(identity=username)
+            return {'access_token': access_token}, 200
+
+        return {'message': 'Invalid credentials'}, 401
+
+class LogoutResource(Resource):
+    @jwt_required()
+    def delete(self):
+        response = jsonify({'message': 'Logout successful'})
+        unset_jwt_cookies(response)
+        return response
+run.py
+python
+Copy code
+from app import create_app, db
+
+app = create_app()
+
+if __name__ == "__main__":
+    app.run(debug=True)
+Project Structure
+arduino
+Copy code
+your_project/
+├── app/
+│   ├── __init__.py
+│   ├── models.py
+│   ├── whitelist.py
+│   └── workflows.py
+├── auth/
+│   ├── __init__.py
+│   └── routes.py
+├── config.py
+├── run.py
+└── requirements.txt
+requirements.txt
+makefile
+Copy code
+Flask==2.0.1
+Flask-SQLAlchemy==2.5.1
+Flask-RESTful==0.3.9
+Flask-JWT-Extended==4.3.1
+This setup ensures that your backend is organized using Flask Blueprints, and RESTful API practices are followed with the use of flask_restful. Additionally, the JWTManager is used for authentication, and the database models are defined with SQLAlchemy, leveraging Flask-SQLAlchemy for better integration with Flask.
