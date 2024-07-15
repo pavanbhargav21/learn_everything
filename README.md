@@ -1,3 +1,126 @@
+Certainly! Based on your updated table structures, here are the models defined for both SQLAlchemy and Flask-SQLAlchemy.
+
+### SQLAlchemy Models
+
+```python
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from datetime import datetime
+
+Base = declarative_base()
+
+class Whitelist(Base):
+    __tablename__ = 'whitelist'
+    id = Column(Integer, primary_key=True)
+    workflow_name = Column(String(100), nullable=False)
+    workflow_url = Column(String(200), nullable=False)
+    environment = Column(String(100), nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_date = Column(DateTime, default=datetime.utcnow)
+    created_by = Column(String(100), nullable=False)
+    modified_date = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    modified_by = Column(String(100), nullable=False)
+    window_titles = Column(String(200), nullable=True)
+
+class Workflow(Base):
+    __tablename__ = 'workflows'
+    id = Column(Integer, primary_key=True)
+    workflow_name = Column(String(100), nullable=False, unique=True)
+    system_name = Column(String(100), nullable=False)
+    system_version = Column(String(100), nullable=False)
+    is_feed = Column(Boolean, default=False)
+    is_extension_enabled = Column(Boolean, default=False)
+    layout_type = Column(String(100), nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_date = Column(DateTime, default=datetime.utcnow)
+    created_by = Column(String(100), nullable=False)
+    modified_date = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    modified_by = Column(String(100), nullable=False)
+
+# Database setup
+DATABASE_URL = "sqlite:///mydatabase.db"  # Replace with your actual database URL
+engine = create_engine(DATABASE_URL)
+Session = sessionmaker(bind=engine)
+Base.metadata.create_all(engine)
+```
+
+### Flask-SQLAlchemy Models
+
+```python
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+
+db = SQLAlchemy()
+
+class Whitelist(db.Model):
+    __tablename__ = 'whitelist'
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_name = db.Column(db.String(100), nullable=False)
+    workflow_url = db.Column(db.String(200), nullable=False)
+    environment = db.Column(db.String(100), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_date = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(100), nullable=False)
+    modified_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    modified_by = db.Column(db.String(100), nullable=False)
+    window_titles = db.Column(db.String(200), nullable=True)
+
+class Workflow(db.Model):
+    __tablename__ = 'workflows'
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_name = db.Column(db.String(100), nullable=False, unique=True)
+    system_name = db.Column(db.String(100), nullable=False)
+    system_version = db.Column(db.String(100), nullable=False)
+    is_feed = db.Column(db.Boolean, default=False)
+    is_extension_enabled = db.Column(db.Boolean, default=False)
+    layout_type = db.Column(db.String(100), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_date = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(100), nullable=False)
+    modified_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    modified_by = db.Column(db.String(100), nullable=False)
+```
+
+### Explanation
+
+- **Whitelist Table:**
+  - `id`: Primary key.
+  - `workflow_name`: Name of the workflow.
+  - `workflow_url`: URL of the workflow.
+  - `environment`: Environment of the workflow.
+  - `is_active`: Boolean flag indicating if the workflow is active.
+  - `created_date`: Date the entry was created.
+  - `created_by`: User who created the entry.
+  - `modified_date`: Date the entry was last modified.
+  - `modified_by`: User who last modified the entry.
+  - `window_titles`: Titles of windows related to the workflow.
+
+- **Workflow Table:**
+  - `id`: Primary key.
+  - `workflow_name`: Name of the workflow (unique).
+  - `system_name`: Name of the system.
+  - `system_version`: Version of the system.
+  - `is_feed`: Boolean flag indicating if it's a feed.
+  - `is_extension_enabled`: Boolean flag indicating if the extension is enabled.
+  - `layout_type`: Type of layout.
+  - `is_active`: Boolean flag indicating if the workflow is active.
+  - `created_date`: Date the entry was created.
+  - `created_by`: User who created the entry.
+  - `modified_date`: Date the entry was last modified.
+  - `modified_by`: User who last modified the entry.
+
+Next, I'll provide the complete backend structure using Flask-SQLAlchemy and best practices.
+
+
+
+
+
+
+
+
+
+
 from flask import Blueprint, request, jsonify
 from flask_restful import Api, Resource, reqparse
 from flask_jwt_extended import jwt_required
