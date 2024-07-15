@@ -1,3 +1,10 @@
+
+
+
+
+
+
+
 Certainly! Based on your updated table structures, here are the models defined for both SQLAlchemy and Flask-SQLAlchemy.
 
 ### SQLAlchemy Models
@@ -1320,6 +1327,255 @@ requirements.txt
 makefile
 Copy code
 Flask==2.0.1
+
+
+
+
+
+
+
+
+
+Updated Vue Component for App Store
+html
+Copy code
+<template>
+  <v-container>
+    <v-card>
+      <v-card-title>
+        App Store
+        <v-spacer></v-spacer>
+        <v-btn @click="openFormDialog">Add New Entry</v-btn>
+      </v-card-title>
+      <v-card-text>
+        <v-data-table :headers="headers" :items="whitelists" class="elevation-1">
+          <template v-slot:item.actions="{ item }">
+            <v-icon small class="mr-2" @click="editItem(item)">mdi-pencil</v-icon>
+            <v-icon small @click="deleteItem(item)">mdi-delete</v-icon>
+          </template>
+        </v-data-table>
+      </v-card-text>
+    </v-card>
+
+    <v-dialog v-model="formDialog" max-width="500px">
+      <v-card>
+        <v-card-title>
+          <span class="headline">{{ isEdit ? 'Edit Entry' : 'Add New Entry' }}</span>
+        </v-card-title>
+        <v-card-text>
+          <v-form @submit.prevent="submitForm">
+            <v-text-field v-model="form.workflow_name" label="Workflow Name" disabled></v-text-field>
+            <v-text-field v-model="form.url" label="URL" required></v-text-field>
+            <v-text-field v-model="form.system" label="System" disabled></v-text-field>
+            <v-text-field v-model="form.layout" label="Layout" required></v-text-field>
+            <v-btn type="submit" color="primary">{{ isEdit ? 'Update' : 'Add' }}</v-btn>
+          </v-form>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+  </v-container>
+</template>
+
+<script>
+import axios from 'axios';
+
+export default {
+  data() {
+    return {
+      whitelists: [],
+      headers: [
+        { text: 'Workflow Name', value: 'workflow_name' },
+        { text: 'System', value: 'system' },
+        { text: 'URL', value: 'url' },
+        { text: 'Title', value: 'title' },
+        { text: 'Environment', value: 'environment' },
+        { text: 'Is Active', value: 'is_active' },
+        { text: 'Actions', value: 'actions', sortable: false }
+      ],
+      form: {
+        workflow_name: '',
+        url: '',
+        system: '',
+        layout: ''
+      },
+      workflowNames: [],
+      formDialog: false,
+      isEdit: false,
+      editId: null
+    };
+  },
+  created() {
+    this.fetchWhitelists();
+  },
+  methods: {
+    async fetchWhitelists() {
+      try {
+        const response = await axios.get('/api/whitelists/');
+        this.whitelists = response.data.map(item => ({
+          id: item.id,
+          workflow_name: item.workflow_name,
+          system: item.system,
+          url: item.url,
+          title: item.title,
+          environment: item.environment,
+          is_active: item.is_active
+        }));
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    async submitForm() {
+      try {
+        if (this.isEdit) {
+          await axios.put(`/api/whitelists/${this.editId}`, this.form);
+          alert('Entry updated successfully');
+        } else {
+          await axios.post('/api/whitelists/', this.form);
+          alert('Entry added successfully');
+        }
+        this.fetchWhitelists();
+        this.closeFormDialog();
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    async deleteItem(item) {
+      try {
+        await axios.delete(`/api/whitelists/${item.id}`);
+        alert('Entry deleted successfully');
+        this.fetchWhitelists();
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    editItem(item) {
+      this.form = { ...item };
+      this.editId = item.id;
+      this.isEdit = true;
+      this.formDialog = true;
+    },
+    openFormDialog() {
+      this.resetForm();
+      this.formDialog = true;
+      this.isEdit = false;
+      this.editId = null;
+    },
+    closeFormDialog() {
+      this.formDialog = false;
+      this.resetForm();
+    },
+    resetForm() {
+      this.form = {
+        workflow_name: '',
+        url: '',
+        system: '',
+        layout: ''
+      };
+    }
+  }
+};
+</script>
+Updated Backend in Flask
+models.py
+Ensure the models are correctly defined with SQLAlchemy:
+
+python
+Copy code
+from datetime import datetime
+from . import db  # Assuming 'db' is your SQLAlchemy object
+
+class Whitelist(db.Model):
+    __tablename__ = 'whitelist'
+
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_name = db.Column(db.String(100), nullable=False)
+    url = db.Column(db.String(255), nullable=False)
+    system = db.Column(db.String(100), nullable=False)
+    layout = db.Column(db.String(100), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_date = db.Column(db.DateTime, default=datetime.utcnow)
+    modified_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class Workflow(db.Model):
+    __tablename__ = 'workflow'
+
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_name = db.Column(db.String(100), nullable=False)
+    system_name = db.Column(db.String(100), nullable=False)
+    system_version = db.Column(db.String(50), nullable=False)
+    is_feed = db.Column(db.Boolean, default=False)
+    is_extension_enabled = db.Column(db.Boolean, default=False)
+    layout_type = db.Column(db.String(50), nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    created_date = db.Column(db.DateTime, default=datetime.utcnow)
+    modified_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+routes.py
+python
+Copy code
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required
+from ..models import db, Whitelist, Workflow
+
+bp = Blueprint('whitelists', __name__, url_prefix='/api/whitelists')
+
+@bp.route('/', methods=['GET'])
+@jwt_required()
+def get_whitelists():
+    whitelists = Whitelist.query.all()
+    data = [{
+        'id': w.id,
+        'workflow_name': w.workflow_name,
+        'system': w.system,
+        'url': w.url,
+        'title': w.title,  # Adjust according to actual column names in Whitelist table
+        'environment': w.environment,  # Adjust according to actual column names in Whitelist table
+        'is_active': w.is_active
+    } for w in whitelists]
+    return jsonify(data)
+
+@bp.route('/', methods=['POST'])
+@jwt_required()
+def create_whitelist():
+    data = request.get_json()
+    new_whitelist = Whitelist(
+        workflow_name=data['workflow_name'],
+        system=Workflow.query.filter_by(workflow_name=data['workflow_name']).first().system_name,
+        url=data['url'],
+        layout=data['layout'],
+        is_active=True  # Adjust default value as needed
+    )
+    db.session.add(new_whitelist)
+    db.session.commit()
+    return jsonify({'message': 'Whitelist entry created successfully'}), 201
+
+@bp.route('/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_whitelist(id):
+    data = request.get_json()
+    whitelist = Whitelist.query.get(id)
+    if not whitelist:
+        return jsonify({'message': 'Whitelist entry not found'}), 404
+
+    whitelist.url = data['url']
+    whitelist.layout = data['layout']
+    whitelist.modified_date = datetime.utcnow()
+
+    db.session.commit()
+    return jsonify({'message': 'Whitelist entry updated successfully'}), 200
+
+@bp.route('/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_whitelist(id):
+    whitelist = Whitelist.query.get(id)
+    if not whitelist:
+        return jsonify({'message': 'Whitelist entry not found'}), 404
+
+    db.session.delete(whitelist)
+    db.session.commit()
+    return jsonify({'message': 'Whitelist entry deleted successfully'}), 200
+
+Explanation
+Frontend: The Vue co
 Flask-SQLAlchemy==2.5.1
 Flask-RESTful==0.3.9
 Flask-JWT-Extended==4.3.1
