@@ -1,3 +1,33 @@
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
+
+# Replace with your SQLALCHEMY_DATABASE_URI
+SQLALCHEMY_DATABASE_URI = 'mssql+pyodbc://linga:Iknw@2@pulseaz.database.windows.net:1433/pulserbb?driver=ODBC+Driver+17+for+SQL+Server'
+
+def check_database_connection():
+    try:
+        engine = create_engine(SQLALCHEMY_DATABASE_URI)
+        connection = engine.connect()
+        connection.close()
+        print("Database connection successful!")
+    except OperationalError as e:
+        print(f"Error connecting to database: {str(e)}")
+
+if __name__ == "__main__":
+    check_database_connection()
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------
 # backend/routes.py
 from flask import Blueprint, jsonify
 from sqlalchemy import create_engine
