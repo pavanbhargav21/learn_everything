@@ -5,6 +5,11 @@ curl -X OPTIONS http://localhost:5000/api/whitelists \
 -H "Access-Control-Request-Headers: Content-Type, Authorization"
 
 
+curl -X POST http://localhost:5000/api/whitelists \
+-H "Content-Type: application/json" \
+-d '{"workflow_name": "Example Workflow", "workflow_url": "http://example.com", "environment": "Production", "is_active": true, "created_by": "user@example.com", "modified_by": "user@example.com"}'
+
+
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 
