@@ -1,3 +1,10 @@
+
+curl -X OPTIONS http://localhost:5000/api/whitelists \
+-H "Access-Control-Request-Method: POST" \
+-H "Origin: http://frontend.example.com" \
+-H "Access-Control-Request-Headers: Content-Type, Authorization"
+
+
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 
