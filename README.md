@@ -1,4 +1,522 @@
 
+[17/07, 09:54] Pavan Bhargav Reddy: To achieve this, you can structure your Flask backend with SQLAlchemy (without Flask-SQLAlchemy) and use Flask-RESTful for handling RESTful routes. Here’s how you can set up your project:
+
+### Project Structure
+```
+my_flask_app/
+│
+├── app.py
+├── models.py
+├── resources/
+│   ├── __init__.py
+│   ├── keyname_mapping.py
+├── db.py
+└── config.py
+```
+
+### `config.py`
+```python
+class Config:
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///keyname_mapping.db'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+```
+
+### `db.py`
+```python
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from config import Config
+
+engine = create_engine(Config.SQLALCHEMY_DATABASE_URI)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+```
+
+### `models.py`
+```python
+from sqlalchemy import Column, Integer, String
+from db import Base, engine
+
+class KeyNameMapping(Base):
+    __tablename__ = 'key_name_mapping'
+    id = Column(Integer, primary_key=True, index=True)
+    workflow_name = Column(String, nullable=False)
+    key_name = Column(String, nullable=False)
+    layout = Column(String, nullable=False)
+    remarks = Column(String, nullable=False)
+
+# Create tables
+Base.metadata.create_all(bind=engine)
+```
+
+### `resources/keyname_mapping.py`
+```python
+from flask_restful import Resource, reqparse
+from models import KeyNameMapping
+from db import SessionLocal
+
+parser = reqparse.RequestParser()
+parser.add_argument('workflowName', type=str, required=True, help="Workflow Name is required")
+parser.add_argument('keyName', type=str, required=True, help="Key Name is required")
+parser.add_argument('layout', type=str, required=True, help="Layout is required")
+parser.add_argument('remarks', type=str, required=True, help="Remarks is required")
+
+class KeyNameMappingResource(Resource):
+    def get(self):
+        session = SessionLocal()
+        mappings = session.query(KeyNameMapping).all()
+        session.close()
+        return [{'id': mapping.id, 'workflow_name': mapping.workflow_name, 'key_name': mapping.key_name, 'layout': mapping.layout, 'remarks': mapping.remarks} for mapping in mappings], 200
+
+    def post(self):
+        args = parser.parse_args()
+        session = SessionLocal()
+        new_mapping = KeyNameMapping(
+            workflow_name=args['workflowName'],
+            key_name=args['keyName'],
+            layout=args['layout'],
+            remarks=args['remarks']
+        )
+        session.add(new_mapping)
+        session.commit()
+        session.refresh(new_mapping)
+        session.close()
+        return {'id': new_mapping.id, 'workflow_name': new_mapping.workflow_name, 'key_name': new_mapping.key_name, 'layout': new_mapping.layout, 'remarks': new_mapping.remarks}, 201
+
+    def put(self, id):
+        args = parser.parse_args()
+        session = SessionLocal()
+        mapping = session.query(KeyNameMapping).filter(KeyNameMapping.id == id).first()
+        if mapping:
+            mapping.workflow_name = args['workflowName']
+            mapping.key_name = args['keyName']
+            mapping.layout = args['layout']
+            mapping.remarks = args['remarks']
+            session.commit()
+            session.refresh(mapping)
+            session.close()
+            return {'id': mapping.id, 'workflow_name': mapping.workflow_name, 'key_name': mapping.key_name, 'layout': mapping.layout, 'remarks': mapping.remarks}, 200
+        else:
+            session.close()
+            return {'message': 'Mapping not found'}, 404
+
+    def delete(self, id):
+        session = SessionLocal()
+        mapping = session.query(KeyNameMapping).filter(KeyNameMapping.id == id).first()
+        if mapping:
+            session.delete(mapping)
+            session.commit()
+            session.close()
+            return {'message': 'Mapping deleted'}, 200
+        else:
+            session.close()
+            return {'message': 'Mapping not found'}, 404
+```
+
+### `app.py`
+```python
+from flask import Flask
+from flask_restful import Api
+from resources.keyname_mapping import KeyNameMappingResource
+
+app = Flask(__name__)
+api = Api(app)
+
+api.add_resource(KeyNameMappingResource, '/keyname_mapping', '/keyname_mapping/<int:id>')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+### Explanation
+
+1. **`config.py`**: Contains the configuration for the database URI.
+2. **`db.py`**: Sets up the SQLAlchemy engine, session, and base declarative class.
+3. **`models.py`**: Defines the `KeyNameMapping` model and creates the database table.
+4. **`resources/keyname_mapping.py`**: Contains the RESTful resource class for handling GET, POST, PUT, and DELETE requests for key name mappings.
+5. **`app.py`**: Sets up the Flask application, initializes the RESTful API, and adds the resource routes.
+
+### Testing
+
+You can now start the Flask application and test the endpoints using tools like Postman or curl:
+
+- **GET** `/keyname_mapping`: Retrieve all key name mappings.
+- **POST** `/keyname_mapping`: Create a new key name mapping.
+- **PUT** `/keyname_mapping/<id>`: Update an existing key name mapping.
+- **DELETE** `/keyname_mapping/<id>`: Delete a key name mapping.
+
+This setup provides a clean separation of concerns, with the database models, configuration, and resource handling in separate files.
+[17/07, 09:55] Pavan Bhargav Reddy: <template>
+  <v-container>
+    <v-form ref="form" v-model="valid">
+      <v-text-field v-model="workflowName" label="Workflow Name" required></v-text-field>
+      
+      <div v-for="(field, index) in fields" :key="index">
+        <v-text-field v-model="field.keyName" label="Key Name" required></v-text-field>
+        <v-text-field v-model="field.layout" label="Layout" required></v-text-field>
+        <v-text-field v-model="field.remarks" label="Remarks" required></v-text-field>
+        <v-btn @click="removeField(index)">Remove</v-btn>
+      </div>
+
+      <v-btn @click="addField">Add Field</v-btn>
+      <v-btn @click="submit" :disabled="!valid">Submit</v-btn>
+    </v-form>
+  </v-container>
+</template>
+
+<script>
+import axios from 'axios';
+
+export default {
+  data() {
+    return {
+      valid: false,
+      workflowName: '',
+      fields: [
+        { keyName: '', layout: '', remarks: '' }
+      ]
+    };
+  },
+  methods: {
+    addField() {
+      this.fields.push({ keyName: '', layout: '', remarks: '' });
+    },
+    removeField(index) {
+      this.fields.splice(index, 1);
+    },
+    async submit() {
+      if (this.$refs.form.validate()) {
+        const payload = this.fields.map(field => ({
+          workflowName: this.workflowName,
+          keyName: field.keyName,
+          layout: field.layout,
+          remarks: field.remarks
+        }));
+        
+        try {
+          await axios.post('/api/submit', payload);
+          alert('Data submitted successfully!');
+        } catch (error) {
+          console.error('Error submitting data:', error);
+        }
+      }
+    }
+  }
+};
+</script>
+[17/07, 10:00] Pavan Bhargav Reddy: To address your requirement, the process involves fetching workflow names from the backend to populate the autocomplete field in the frontend. Once a workflow name is selected, the corresponding workflow ID is determined and sent to the backend with the key name, layout, and remark pairs. Here is how you can achieve this:
+
+### Frontend
+
+1. **Fetching Workflow Names**: Fetch workflow names to populate the autocomplete field.
+
+```javascript
+methods: {
+  fetchWorkflowNames() {
+    axios.get('/api/workflows')
+      .then(response => {
+        this.workflowOptions = response.data;
+      })
+      .catch(error => {
+        console.error("There was an error fetching the workflow names!", error);
+      });
+  }
+}
+```
+
+2. **Replacing Workflow Name with Workflow ID**: After selecting a workflow name, replace it with the corresponding workflow ID before sending the data to the backend.
+
+```javascript
+methods: {
+  submitForm() {
+    const selectedWorkflow = this.workflowOptions.find(
+      option => option.name === this.form.workflowName
+    );
+
+    if (selectedWorkflow) {
+      const formData = this.form.keyNameLayouts.map(entry => ({
+        workflowId: selectedWorkflow.id,
+        keyName: entry.keyName,
+        layout: entry.layout,
+        remarks: entry.remarks
+      }));
+
+      axios.post('/api/keyname-mapping', formData)
+        .then(response => {
+          console.log("Data submitted successfully", response);
+        })
+        .catch(error => {
+          console.error("There was an error submitting the data!", error);
+        });
+    } else {
+      console.error("Invalid workflow name selected");
+    }
+  }
+}
+```
+
+### Backend
+
+1. **SQLAlchemy Models**: Define the models for workflows and key name mapping.
+
+```python
+from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy.orm import relationship
+from your_database_setup import Base, engine
+
+class Workflow(Base):
+    __tablename__ = 'workflows'
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+
+class KeyNameMapping(Base):
+    __tablename__ = 'key_name_mappings'
+    id = Column(Integer, primary_key=True)
+    workflow_id = Column(Integer, ForeignKey('workflows.id'), nullable=False)
+    key_name = Column(String, nullable=False)
+    layout = Column(String, nullable=False)
+    remarks = Column(String, nullable=False)
+    workflow = relationship('Workflow')
+```
+
+2. **REST API with Flask**: Handle GET and POST requests.
+
+```python
+from flask import Flask, request, jsonify
+from flask_restful import Resource, Api
+from your_database_setup import Session, Workflow, KeyNameMapping
+
+app = Flask(__name__)
+api = Api(app)
+session = Session()
+
+class WorkflowListResource(Resource):
+    def get(self):
+        workflows = session.query(Workflow).all()
+        return jsonify([{"id": w.id, "name": w.name} for w in workflows])
+
+class KeyNameMappingResource(Resource):
+    def post(self):
+        data = request.get_json()
+        for item in data:
+            new_entry = KeyNameMapping(
+                workflow_id=item['workflowId'],
+                key_name=item['keyName'],
+                layout=item['layout'],
+                remarks=item['remarks']
+            )
+            session.add(new_entry)
+        session.commit()
+        return {"message": "Key name mappings added successfully"}, 201
+
+api.add_resource(WorkflowListResource, '/api/workflows')
+api.add_resource(KeyNameMappingResource, '/api/keyname-mapping')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+This setup ensures that the workflow name is replaced with the workflow ID before the data is sent to the backend, where it is then stored correctly in the database.
+[17/07, 10:03] Pavan Bhargav Reddy: To extend your current setup to include editing and deleting entries from the `KeyNameMapping` table, we need to implement additional frontend and backend functionality.
+
+### Frontend
+
+1. **Key Store Component**: Display key name mappings with edit and delete actions.
+
+```vue
+<template>
+  <div>
+    <v-data-table :headers="headers" :items="keyMappings" class="elevation-1">
+      <template v-slot:item.actions="{ item }">
+        <v-icon small @click="editItem(item)">mdi-pencil</v-icon>
+        <v-icon small @click="deleteItem(item)">mdi-delete</v-icon>
+      </template>
+    </v-data-table>
+
+    <!-- Edit Dialog -->
+    <v-dialog v-model="editDialog" max-width="600px">
+      <v-card>
+        <v-card-title>
+          <span class="headline">Edit Key Mapping</span>
+        </v-card-title>
+        <v-card-text>
+          <v-container>
+            <v-row>
+              <v-col cols="12" sm="6" md="4">
+                <v-text-field v-model="editedItem.keyName" label="Key Name"></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6" md="4">
+                <v-text-field v-model="editedItem.layout" label="Layout"></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6" md="4">
+                <v-text-field v-model="editedItem.remarks" label="Remarks"></v-text-field>
+              </v-col>
+            </v-row>
+          </v-container>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="blue darken-1" text @click="closeEdit">Cancel</v-btn>
+          <v-btn color="blue darken-1" text @click="saveEdit">Save</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+  </div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      keyMappings: [],
+      headers: [
+        { text: 'Key Name', value: 'keyName' },
+        { text: 'Layout', value: 'layout' },
+        { text: 'Remarks', value: 'remarks' },
+        { text: 'Actions', value: 'actions', sortable: false }
+      ],
+      editDialog: false,
+      editedItem: {},
+    };
+  },
+  methods: {
+    fetchKeyMappings() {
+      axios.get('/api/keyname-mapping')
+        .then(response => {
+          this.keyMappings = response.data;
+        })
+        .catch(error => {
+          console.error("There was an error fetching the key mappings!", error);
+        });
+    },
+    editItem(item) {
+      this.editedItem = { ...item };
+      this.editDialog = true;
+    },
+    saveEdit() {
+      axios.put(`/api/keyname-mapping/${this.editedItem.id}`, this.editedItem)
+        .then(response => {
+          this.fetchKeyMappings();
+          this.editDialog = false;
+        })
+        .catch(error => {
+          console.error("There was an error saving the edit!", error);
+        });
+    },
+    deleteItem(item) {
+      axios.delete(`/api/keyname-mapping/${item.id}`)
+        .then(response => {
+          this.fetchKeyMappings();
+        })
+        .catch(error => {
+          console.error("There was an error deleting the item!", error);
+        });
+    },
+    closeEdit() {
+      this.editDialog = false;
+    }
+  },
+  mounted() {
+    this.fetchKeyMappings();
+  }
+};
+</script>
+```
+
+### Backend
+
+1. **Add GET, PUT, DELETE methods**: Enhance your existing REST API to support fetching, updating, and deleting key name mappings.
+
+```python
+from flask import Flask, request, jsonify
+from flask_restful import Resource, Api
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+from models import Workflow, KeyNameMapping, Base
+
+app = Flask(__name__)
+api = Api(app)
+
+# Database setup
+engine = create_engine('sqlite:///your_database.db')  # Update with your database URL
+Base.metadata.bind = engine
+DBSession = sessionmaker(bind=engine)
+session = DBSession()
+
+class WorkflowListResource(Resource):
+    def get(self):
+        workflows = session.query(Workflow).all()
+        return jsonify([{"id": w.id, "name": w.name} for w in workflows])
+
+class KeyNameMappingResource(Resource):
+    def get(self):
+        key_name_mappings = session.query(KeyNameMapping).all()
+        return jsonify([{
+            "id": k.id,
+            "workflowId": k.workflow_id,
+            "keyName": k.key_name,
+            "layout": k.layout,
+            "remarks": k.remarks
+        } for k in key_name_mappings])
+
+    def post(self):
+        data = request.get_json()
+        for item in data:
+            new_entry = KeyNameMapping(
+                workflow_id=item['workflowId'],
+                key_name=item['keyName'],
+                layout=item['layout'],
+                remarks=item['remarks']
+            )
+            session.add(new_entry)
+        session.commit()
+        return {"message": "Key name mappings added successfully"}, 201
+
+class KeyNameMappingDetailResource(Resource):
+    def put(self, id):
+        data = request.get_json()
+        key_name_mapping = session.query(KeyNameMapping).filter_by(id=id).first()
+        if key_name_mapping:
+            key_name_mapping.key_name = data['keyName']
+            key_name_mapping.layout = data['layout']
+            key_name_mapping.remarks = data['remarks']
+            session.commit()
+            return {"message": "Key name mapping updated successfully"}, 200
+        return {"message": "Key name mapping not found"}, 404
+
+    def delete(self, id):
+        key_name_mapping = session.query(KeyNameMapping).filter_by(id=id).first()
+        if key_name_mapping:
+            session.delete(key_name_mapping)
+            session.commit()
+            return {"message": "Key name mapping deleted successfully"}, 200
+        return {"message": "Key name mapping not found"}, 404
+
+api.add_resource(WorkflowListResource, '/api/workflows')
+api.add_resource(KeyNameMappingResource, '/api/keyname-mapping')
+api.add_resource(KeyNameMappingDetailResource, '/api/keyname-mapping/<int:id>')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+This setup allows you to fetch key name mappings, update an entry via PUT requests, and delete an entry via DELETE requests. Each action (edit and delete) in the frontend triggers the respective backend endpoint, ensuring that your `KeyNameMapping` table is updated accordingly.
+
+
+
+
+
+
+
+
+
+
+
+
+
+-----------------------------------------------
+
 curl -X OPTIONS http://localhost:5000/api/whitelists \
 -H "Access-Control-Request-Method: POST" \
 -H "Origin: http://frontend.example.com" \
