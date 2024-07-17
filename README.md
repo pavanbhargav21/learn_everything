@@ -1,3 +1,59 @@
+To define your database table using SQLAlchemy (without Flask-SQLAlchemy), you need to create a model that represents your table structure. Below is an example of how to define the table with the specified columns and constraints:
+
+```python
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+import datetime
+
+Base = declarative_base()
+
+class KeyNameMapping(Base):
+    __tablename__ = 'key_name_mapping'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workflow_id = Column(Integer, nullable=False)
+    pattern = Column(String(50), nullable=True)
+    activity_key_name = Column(String(1000), nullable=True)
+    activity_key_type = Column(String(1000), nullable=True)
+    activity_key_layout = Column(String(500), nullable=True)
+    interactive_bit = Column(Integer, nullable=True)
+    created_date = Column(DateTime, default=datetime.datetime.utcnow, nullable=True)
+    created_by = Column(String(50), nullable=True)
+    modified_date = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=True)
+    modified_by = Column(String(50), nullable=True)
+
+    def __init__(self, workflow_id, pattern=None, activity_key_name=None, activity_key_type=None, activity_key_layout=None, interactive_bit=None, created_by=None, modified_by=None):
+        self.workflow_id = workflow_id
+        self.pattern = pattern
+        self.activity_key_name = activity_key_name
+        self.activity_key_type = activity_key_type
+        self.activity_key_layout = activity_key_layout
+        self.interactive_bit = interactive_bit
+        self.created_by = created_by
+        self.modified_by = modified_by
+
+# Example of creating the engine and creating the tables in the database
+engine = create_engine('sqlite:///your_database.db')  # Update with your database URL
+Base.metadata.create_all(engine)
+```
+
+### Explanation:
+
+1. **Class Definition**: The class `KeyNameMapping` represents the table `key_name_mapping`.
+2. **Columns**: Each class attribute corresponds to a column in the table. For example, `id`, `workflow_id`, `pattern`, etc.
+   - `Column(Integer, primary_key=True, autoincrement=True)` indicates that `id` is the primary key and it auto-increments.
+   - `Column(String(50), nullable=True)` indicates a column with a `String` type of length 50 and it allows null values.
+   - `Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=True)` indicates a `DateTime` column with a default value of the current UTC time and it updates to the current UTC time whenever the record is updated.
+3. **Constructor**: The `__init__` method is defined to initialize the object with the specified parameters.
+4. **Engine and Table Creation**: The `create_engine` function creates a new engine instance connected to your database, and `Base.metadata.create_all(engine)` creates the table in the database based on the defined models.
+
+Replace `'sqlite:///your_database.db'` with the appropriate database URL for your setup.
+
+You can extend this base model to include relationships, additional constraints, or methods as needed for your application's requirements.
+
+
+
 
 [17/07, 09:54] Pavan Bhargav Reddy: To achieve this, you can structure your Flask backend with SQLAlchemy (without Flask-SQLAlchemy) and use Flask-RESTful for handling RESTful routes. Here’s how you can set up your project:
 
