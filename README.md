@@ -1,3 +1,12 @@
+pip install SQLAlchemy
+pip install python-dotenv
+pip install Flask-JWT-Extended
+pip install Flask-Cors
+pip install Flask
+pip install Flask-RESTful
+
+
+
 // src/eventBus.js
 
 class EventBus {
