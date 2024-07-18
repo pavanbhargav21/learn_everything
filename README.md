@@ -1,3 +1,223 @@
+<template>
+  <v-container>
+    <v-card flat>
+      <v-card-text>
+        <v-form ref="form" @submit.prevent="submitForm" v-model="valid">
+          <v-row>
+            <v-col cols="8">
+              <v-autocomplete
+                v-model="autocompleteValuee"
+                :items="workflowNames.map(workflow => workflow.workflow_name)"
+                label="Please specify the workflow name"
+                placeholder="Type"
+                prepend-icon="mdi-database-arrow-up"
+                solo
+                :rules="[v => !!v || 'Workflowname is required']"
+              >
+                <template v-slot:prepend>
+                  <span style="margin-right:10px; font-family: 'Gill Sans'; font-weight: bold;">Workflow Name</span>
+                </template>
+              </v-autocomplete>
+            </v-col>
+          </v-row>
+
+          <!-- Patterns -->
+          <div v-for="(pattern, patternIndex) in patterns" :key="patternIndex">
+            <v-row align="center">
+              <v-col cols="11">
+                <h3>{{ pattern.name }}</h3>
+              </v-col>
+              <v-col cols="1">
+                <v-btn icon @click="addPattern" v-if="patternIndex === patterns.length - 1">
+                  <v-icon>mdi-plus</v-icon>
+                </v-btn>
+              </v-col>
+            </v-row>
+
+            <!-- Field headers -->
+            <v-row>
+              <v-col cols="3">
+                <strong style="margin-right:10px; font-family: 'Gill Sans'; font-weight: bold;">Volume Key</strong>
+              </v-col>
+              <v-col cols="3">
+                <strong style="margin-right:10px; font-family: 'Gill Sans'; font-weight: bold;">Type</strong>
+              </v-col>
+              <v-col cols="3">
+                <strong style="margin-right:10px; font-family: 'Gill Sans'; font-weight: bold;">Layout</strong>
+              </v-col>
+            </v-row>
+
+            <!-- Fields -->
+            <v-row v-for="(field, fieldIndex) in pattern.fields" :key="fieldIndex" class="align-center">
+              <v-col cols="3">
+                <v-text-field v-model="field.keyName" label="Key value"></v-text-field>
+              </v-col>
+              <v-col cols="3">
+                <v-select v-model="field.type" :items="types" label="Label"></v-select>
+              </v-col>
+              <v-col cols="3">
+                <v-select v-model="field.layout" :items="layouts" label="Layout"></v-select>
+              </v-col>  
+              <v-col cols="1.5">
+                <v-btn @click="addFieldSet(patternIndex)" icon>
+                  <v-icon>mdi-plus</v-icon>
+                </v-btn>
+              </v-col>
+              <v-col cols="1.5">
+                <v-btn @click="removeFieldSet(patternIndex, fieldIndex)" icon>
+                  <v-icon>mdi-minus</v-icon>
+                </v-btn>
+              </v-col>
+            </v-row>
+          </div>
+
+          <v-btn type="submit" color="primary" :disabled="!valid" class="mt-4">Save</v-btn>
+        </v-form>
+      </v-card-text>
+    </v-card>
+  </v-container>
+</template>
+
+<script>
+import axios from '../axios';
+
+export default {
+  data() {
+    return {
+      patterns: [
+        {
+          name: 'Pattern1',
+          fields: [{ keyName: '', type: '', layout: '' }]
+        }
+      ],
+      types: ['Field', 'Button'],
+      layouts: ['Horizontal', 'Vertical'],
+      autocompleteValuee: "",
+      valid: false,
+      workflowNames: [],
+      payload: null
+    };
+  },
+  created() {
+    this.fetchWorkflowNames();
+  },
+  methods: {
+    addPattern() {
+      const newPatternNumber = this.patterns.length + 1;
+      this.patterns.push({
+        name: `Pattern${newPatternNumber}`,
+        fields: [{ keyName: '', type: '', layout: '' }]
+      });
+    },
+    addFieldSet(patternIndex) {
+      this.patterns[patternIndex].fields.push({ keyName: '', type: '', layout: '' });
+    },
+    removeFieldSet(patternIndex, fieldIndex) {
+      if (this.patterns[patternIndex].fields.length > 1) {
+        this.patterns[patternIndex].fields.splice(fieldIndex, 1);
+      }
+    },
+    async fetchWorkflowNames() {
+      try {
+        const response = await axios.get('/api/workflows');
+        this.workflowNames = response.data.map(workflow => ({
+          workflow_name: workflow.workflow_name,
+          id: workflow.id
+        }));
+        console.log("Workflow Names:", this.workflowNames);
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    async submitForm() {
+      if (this.$refs.form.validate()) {
+        const selectedWorkflow = this.workflowNames.find(
+          option => option.workflow_name === this.autocompleteValuee
+        );
+
+        if (selectedWorkflow) {
+          console.log("Getting payload data...")
+          this.payload = this.patterns.flatMap(pattern => 
+            pattern.fields.map(field => ({
+              workflowId: selectedWorkflow.id,
+              patternName: pattern.name,
+              keyname: field.keyName,
+              layout: field.layout,
+              types: field.type,
+            }))
+          );
+          try {
+            console.log("payload is", this.payload)
+            await axios.post('/api/volumematrix', this.payload);
+            alert('Data submitted successfully!');
+            this.fetchWorkflowNames();
+          } catch (error) {
+            console.error('Error submitting data:', error);
+          }
+        }
+      }
+    }
+  },
+};
+</script>
+
+<style scoped>
+.align-center {
+  display: flex;
+  align-items: center;
+}
+
+.headline {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+.subtitle-1 {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.body-2 {
+  font-size: 14px;
+  font-weight: bold;
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------
+
+
 pip install SQLAlchemy
 pip install python-dotenv
 pip install Flask-JWT-Extended
