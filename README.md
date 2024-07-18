@@ -1,3 +1,191 @@
+
+<template>
+  <v-container>
+    <v-form ref="form" @submit.prevent="submitForm" v-model="valid">
+      <v-row>
+        <v-col cols="8">
+          <v-autocomplete
+            v-model="autocompleteValuee"
+            :items="workflowNames.map(workflow => workflow.workflow_name)"
+            label="Please specify the workflow name"
+            placeholder="Type"
+            prepend-icon="mdi-database-arrow-up"
+            solo
+            :rules="[v => !!v || 'Workflowname is required']"
+          >
+            <template v-slot:prepend>
+              <span style="margin-right:10px; font-family: 'Gill Sans'; font-weight: bold;">Workflow Name</span>
+            </template>
+          </v-autocomplete>
+        </v-col>
+      </v-row>
+
+      <!-- Patterns -->
+      <v-row>
+        <v-col v-for="(pattern, patternIndex) in patterns" :key="patternIndex" cols="12" md="6" lg="4">
+          <v-card class="mb-4">
+            <v-card-title>
+              {{ pattern.name }}
+              <v-spacer></v-spacer>
+              <v-btn icon @click="removePattern(patternIndex)" color="error">
+                <v-icon>mdi-minus</v-icon>
+              </v-btn>
+            </v-card-title>
+            <v-card-text>
+              <!-- Field headers -->
+              <v-row>
+                <v-col cols="4">
+                  <strong style="font-family: 'Gill Sans'; font-weight: bold;">Volume Key</strong>
+                </v-col>
+                <v-col cols="4">
+                  <strong style="font-family: 'Gill Sans'; font-weight: bold;">Type</strong>
+                </v-col>
+                <v-col cols="4">
+                  <strong style="font-family: 'Gill Sans'; font-weight: bold;">Layout</strong>
+                </v-col>
+              </v-row>
+
+              <!-- Fields -->
+              <v-row v-for="(field, fieldIndex) in pattern.fields" :key="fieldIndex" class="align-center">
+                <v-col cols="4">
+                  <v-text-field v-model="field.keyName" label="Key value"></v-text-field>
+                </v-col>
+                <v-col cols="4">
+                  <v-select v-model="field.type" :items="types" label="Label"></v-select>
+                </v-col>
+                <v-col cols="4">
+                  <v-select v-model="field.layout" :items="layouts" label="Layout"></v-select>
+                </v-col>
+              </v-row>
+
+              <v-row>
+                <v-col cols="6">
+                  <v-btn @click="addFieldSet(patternIndex)" small>
+                    <v-icon left>mdi-plus</v-icon> Add Field
+                  </v-btn>
+                </v-col>
+                <v-col cols="6">
+                  <v-btn @click="removeFieldSet(patternIndex, pattern.fields.length - 1)" small>
+                    <v-icon left>mdi-minus</v-icon> Remove Field
+                  </v-btn>
+                </v-col>
+              </v-row>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <v-row>
+        <v-col>
+          <v-btn @click="addPattern" color="primary">
+            <v-icon left>mdi-plus</v-icon> Add Pattern
+          </v-btn>
+        </v-col>
+      </v-row>
+
+      <v-btn type="submit" color="success" :disabled="!valid" class="mt-4">Save</v-btn>
+    </v-form>
+  </v-container>
+</template>
+
+<script>
+import axios from '../axios';
+
+export default {
+  data() {
+    return {
+      patterns: [
+        {
+          name: 'Pattern1',
+          fields: [{ keyName: '', type: '', layout: '' }]
+        }
+      ],
+      types: ['Field', 'Button'],
+      layouts: ['Horizontal', 'Vertical'],
+      autocompleteValuee: "",
+      valid: false,
+      workflowNames: [],
+      payload: null
+    };
+  },
+  created() {
+    this.fetchWorkflowNames();
+  },
+  methods: {
+    addPattern() {
+      const newPatternNumber = this.patterns.length + 1;
+      this.patterns.push({
+        name: `Pattern${newPatternNumber}`,
+        fields: [{ keyName: '', type: '', layout: '' }]
+      });
+    },
+    removePattern(patternIndex) {
+      this.patterns.splice(patternIndex, 1);
+    },
+    addFieldSet(patternIndex) {
+      this.patterns[patternIndex].fields.push({ keyName: '', type: '', layout: '' });
+    },
+    removeFieldSet(patternIndex, fieldIndex) {
+      if (this.patterns[patternIndex].fields.length > 1) {
+        this.patterns[patternIndex].fields.splice(fieldIndex, 1);
+      }
+    },
+    async fetchWorkflowNames() {
+      try {
+        const response = await axios.get('/api/workflows');
+        this.workflowNames = response.data.map(workflow => ({
+          workflow_name: workflow.workflow_name,
+          id: workflow.id
+        }));
+        console.log("Workflow Names:", this.workflowNames);
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    async submitForm() {
+      if (this.$refs.form.validate()) {
+        const selectedWorkflow = this.workflowNames.find(
+          option => option.workflow_name === this.autocompleteValuee
+        );
+
+        if (selectedWorkflow) {
+          console.log("Getting payload data...")
+          this.payload = this.patterns.flatMap(pattern => 
+            pattern.fields.map(field => ({
+              workflowId: selectedWorkflow.id,
+              patternName: pattern.name,
+              keyname: field.keyName,
+              layout: field.layout,
+              types: field.type,
+            }))
+          );
+          try {
+            console.log("payload is", this.payload)
+            await axios.post('/api/volumematrix', this.payload);
+            alert('Data submitted successfully!');
+            this.fetchWorkflowNames();
+          } catch (error) {
+            console.error('Error submitting data:', error);
+          }
+        }
+      }
+    }
+  },
+};
+</script>
+
+<style scoped>
+.align-center {
+  display: flex;
+  align-items: center;
+}
+</style>
+
+
+
+
+
+-----------------------------------
 <template>
   <v-container>
     <v-form ref="form" @submit.prevent="submitForm" v-model="valid">
