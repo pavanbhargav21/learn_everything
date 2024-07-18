@@ -1,3 +1,29 @@
+
+import EventBus from '../eventBus';
+
+// ... other code ...
+
+methods: {
+  async submitForm(){
+    const isFormValid = this.$refs.form.validate();
+    if (isFormValid){
+      try {
+        console.log("New Workflow Data",this.form)
+        await axios.post('/api/whitelists/',this.form);
+        alert('Form submitted successfully');
+        this.resetForm();
+        // Emit an event to notify that a new workflow has been added
+        EventBus.$emit('workflow-added');
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  },
+  // ... other methods ...
+}
+
+
+
 To define your database table using SQLAlchemy (without Flask-SQLAlchemy), you need to create a model that represents your table structure. Below is an example of how to define the table with the specified columns and constraints:
 
 ```python
