@@ -1,3 +1,25 @@
+.pattern-container {
+  margin-bottom: 10px;
+}
+
+.field-set {
+  margin-bottom: 5px;
+}
+
+.field-set .field {
+  margin-bottom: 5px;
+}
+
+button {
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+
+
+
+
+
+
 <template>
   <!-- Keep the template as it was in the previous version -->
 </template>
