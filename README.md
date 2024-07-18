@@ -1,4 +1,118 @@
 <template>
+  <!-- Keep the template as it was in the previous version -->
+</template>
+
+<script>
+import axios from '../axios';
+
+export default {
+  data() {
+    return {
+      patterns: [
+        {
+          id: 1,
+          name: 'Pattern1',
+          fields: [{ keyName: '', type: '', layout: '' }]
+        }
+      ],
+      nextPatternId: 2,
+      types: ['Field', 'Button'],
+      layouts: ['Horizontal', 'Vertical'],
+      autocompleteValuee: "",
+      valid: false,
+      workflowNames: [],
+      payload: null
+    };
+  },
+  created() {
+    this.fetchWorkflowNames();
+  },
+  methods: {
+    addPattern() {
+      this.patterns.push({
+        id: this.nextPatternId,
+        name: `Pattern${this.nextPatternId}`,
+        fields: [{ keyName: '', type: '', layout: '' }]
+      });
+      this.nextPatternId++;
+    },
+    removePattern(patternIndex) {
+      this.patterns.splice(patternIndex, 1);
+      this.updatePatternNames();
+    },
+    updatePatternNames() {
+      this.patterns.forEach((pattern, index) => {
+        pattern.name = `Pattern${index + 1}`;
+      });
+      this.nextPatternId = this.patterns.length + 1;
+    },
+    addFieldSet(patternIndex) {
+      this.patterns[patternIndex].fields.push({ keyName: '', type: '', layout: '' });
+    },
+    removeFieldSet(patternIndex, fieldIndex) {
+      if (this.patterns[patternIndex].fields.length > 1) {
+        this.patterns[patternIndex].fields.splice(fieldIndex, 1);
+      }
+    },
+    async fetchWorkflowNames() {
+      try {
+        const response = await axios.get('/api/workflows');
+        this.workflowNames = response.data.map(workflow => ({
+          workflow_name: workflow.workflow_name,
+          id: workflow.id
+        }));
+        console.log("Workflow Names:", this.workflowNames);
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    async submitForm() {
+      if (this.$refs.form.validate()) {
+        const selectedWorkflow = this.workflowNames.find(
+          option => option.workflow_name === this.autocompleteValuee
+        );
+
+        if (selectedWorkflow) {
+          console.log("Getting payload data...")
+          this.payload = this.patterns.flatMap(pattern => 
+            pattern.fields.map(field => ({
+              workflowId: selectedWorkflow.id,
+              patternName: pattern.name,
+              keyname: field.keyName,
+              layout: field.layout,
+              types: field.type,
+            }))
+          );
+          try {
+            console.log("payload is", this.payload)
+            await axios.post('/api/volumematrix', this.payload);
+            alert('Data submitted successfully!');
+            this.fetchWorkflowNames();
+          } catch (error) {
+            console.error('Error submitting data:', error);
+          }
+        }
+      }
+    }
+  },
+};
+</script>
+
+<style scoped>
+.v-card-title {
+  background-color: #f5f5f5;
+}
+</style>
+
+
+
+
+
+
+
+
+
+<template>
   <v-container>
     <v-form ref="form" @submit.prevent="submitForm" v-model="valid">
       <v-row>
