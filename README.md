@@ -1,4 +1,307 @@
 <template>
+  <v-container class="pb-16">
+    <v-form ref="form" @submit.prevent="submitForm" v-model="valid">
+      <v-row>
+        <v-col cols="8">
+          <v-autocomplete
+            v-model="autocompleteValuee"
+            :items="workflowNames.map(workflow => workflow.workflow_name)"
+            label="Please specify the workflow name"
+            placeholder="Type"
+            prepend-icon="mdi-database-arrow-up"
+            solo
+            :rules="[v => !!v || 'Workflowname is required']"
+          >
+            <template v-slot:prepend>
+              <span
+                style="
+                  margin-right: 10px;
+                  font-family: 'Gill Sans';
+                  font-weight: bold;
+                "
+                >Workflow Name</span
+              >
+            </template>
+          </v-autocomplete>
+        </v-col>
+      </v-row>
+
+      <!-- Patterns -->
+      <v-row>
+        <v-col
+          v-for="(pattern, patternIndex) in patterns"
+          :key="patternIndex"
+          cols="12"
+          sm="6"
+          class="d-flex flex-column"
+        >
+          <v-card class="flex-grow-1 mb-2" elevation="2">
+            <v-card-title class="d-flex align-center py-2">
+              <v-icon left color="seashell" small>mdi-google-analytics</v-icon>
+              <span class="text-subtitle-2">{{ pattern.name }}</span>
+              <v-spacer></v-spacer>
+              <v-btn
+                icon
+                x-small
+                @click="removePattern(patternIndex)"
+                color="black"
+              >
+                <v-icon x-small>mdi-delete-alert</v-icon>
+              </v-btn>
+            </v-card-title>
+            <v-divider></v-divider>
+            <v-card-text class="pa-2">
+              <!-- Field headers -->
+              <v-row dense class="mb-1">
+                <v-col cols="4">
+                  <span class="text-caption font-weight-bold">Volume Key</span>
+                </v-col>
+                <v-col cols="4">
+                  <span class="text-caption font-weight-bold">Type</span>
+                </v-col>
+                <v-col cols="4">
+                  <span class="text-caption font-weight-bold">Layout</span>
+                </v-col>
+              </v-row>
+
+              <!-- Fields -->
+              <v-row
+                v-for="(field, fieldIndex) in pattern.fields"
+                :key="fieldIndex"
+                dense
+                class="mb-1"
+              >
+                <v-col cols="4">
+                  <v-text-field
+                    v-model="field.keyName"
+                    label="Key value"
+                    dense
+                    outlined
+                    hide-details
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="4">
+                  <v-select
+                    v-model="field.type"
+                    :items="types"
+                    label="Label"
+                    dense
+                    outlined
+                    hide-details
+                  ></v-select>
+                </v-col>
+                <v-col cols="4">
+                  <v-select
+                    v-model="field.layout"
+                    :items="layouts"
+                    label="Layout"
+                    dense
+                    outlined
+                    hide-details
+                  ></v-select>
+                </v-col>
+              </v-row>
+
+              <v-row dense class="mt-1">
+                <v-col cols="6">
+                  <v-btn
+                    @click="addFieldSet(patternIndex)"
+                    x-small
+                    color="primary"
+                    outlined
+                  >
+                    <v-icon left x-small>mdi-plus</v-icon> Add Field
+                  </v-btn>
+                </v-col>
+                <v-col cols="6">
+                  <v-btn
+                    @click="removeFieldSet(patternIndex, pattern.fields.length - 1)"
+                    x-small
+                    color="error"
+                    outlined
+                  >
+                    <v-icon left x-small>mdi-minus</v-icon> Remove Field
+                  </v-btn>
+                </v-col>
+              </v-row>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+    </v-form>
+
+    <!--<v-footer app fixed class="pa-0"> -->
+    <v-card flat tile width="100%" class="text-center">
+      <v-card-text>
+        <v-btn @click="addPattern" color="primary" class="mr-2">
+          <v-icon left>mdi-plus</v-icon> Add Pattern
+        </v-btn>
+        <v-btn
+          type="submit"
+          color="success"
+          :disabled="!valid"
+          @click="submitForm"
+          >Save</v-btn
+        >
+      </v-card-text>
+    </v-card>
+    <!-- </v-footer> -->
+  </v-container>
+</template>
+
+<script>
+  export default {
+    data() {
+      return {
+        patterns: [
+          {
+            id: 1,
+            name: 'Pattern1',
+            fields: [{ keyName: '', type: '', layout: '' }],
+          },
+        ],
+        nextPatternId: 2,
+        types: ['Field', 'Button'],
+        layouts: ['Horizontal', 'Vertical'],
+        autocompleteValuee: '',
+        valid: false,
+        workflowNames: [],
+        payload: null,
+      }
+    },
+    created() {
+      this.fetchWorkflowNames()
+    },
+    methods: {
+      addPattern() {
+        this.patterns.push({
+          id: this.nextPatternId,
+          name: `Pattern${this.nextPatternId}`,
+          fields: [{ keyName: '', type: '', layout: '' }],
+        })
+        this.nextPatternId++
+      },
+      removePattern(patternIndex) {
+        this.patterns.splice(patternIndex, 1)
+        this.updatePatternNames()
+      },
+      updatePatternNames() {
+        this.patterns.forEach((pattern, index) => {
+          pattern.name = `Pattern${index + 1}`
+        })
+        this.nextPatternId = this.patterns.length + 1
+      },
+      addFieldSet(patternIndex) {
+        this.patterns[patternIndex].fields.push({
+          keyName: '',
+          type: '',
+          layout: '',
+        })
+      },
+      removeFieldSet(patternIndex, fieldIndex) {
+        if (this.patterns[patternIndex].fields.length > 1) {
+          this.patterns[patternIndex].fields.splice(fieldIndex, 1)
+        }
+      },
+      async fetchWorkflowNames() {
+        try {
+          const response = await axios.get('/api/workflows')
+          this.workflowNames = response.data.map(workflow => ({
+            workflow_name: workflow.workflow_name,
+            id: workflow.id,
+          }))
+          console.log('Workflow Names:', this.workflowNames)
+        } catch (error) {
+          console.error(error)
+        }
+      },
+      async submitForm() {
+        if (this.$refs.form.validate()) {
+          const selectedWorkflow = this.workflowNames.find(
+            option => option.workflow_name === this.autocompleteValuee
+          )
+
+          if (selectedWorkflow) {
+            console.log('Getting payload data...')
+            this.payload = this.patterns.flatMap(pattern =>
+              pattern.fields.map(field => ({
+                workflowId: selectedWorkflow.id,
+                patternName: pattern.name,
+                keyname: field.keyName,
+                layout: field.layout,
+                types: field.type,
+              }))
+            )
+            try {
+              console.log('payload is', this.payload)
+              await axios.post('/api/volumematrix', this.payload)
+              alert('Data submitted successfully!')
+              EventBus.$emit('volume-added')
+              this.fetchWorkflowNames()
+            } catch (error) {
+              console.error('Error submitting data:', error)
+            }
+          }
+        }
+      },
+    },
+  }
+</script>
+
+<style scoped>
+  .v-card-title {
+    background-color: royalblue;
+  }
+
+  .pattern-container {
+    margin-bottom: 10px;
+  }
+
+  .field-set {
+    margin-bottom: 5px;
+  }
+
+  .field-set .field {
+    margin-bottom: 5px;
+  }
+
+  button {
+    margin-top: 1px;
+    margin-bottom: 1px;
+  }
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<template>
   <v-container>
     <v-form ref="form" @submit.prevent="submitForm" v-model="valid">
       <v-row>
