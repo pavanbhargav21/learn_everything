@@ -1,3 +1,39 @@
+
+
+from sqlalchemy import create_engine, Column, Integer, func
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+Base = declarative_base()
+
+class VolumeMatrix(Base):
+    __tablename__ = 'volumematrix'
+    
+    id = Column(Integer, primary_key=True)
+    WorkflowId = Column(Integer)
+    Pattern = Column(Integer)  # Assuming Pattern contains integer values
+
+# Database setup
+engine = create_engine('sqlite:///your_database.db')
+Session = sessionmaker(bind=engine)
+session = Session()
+
+def get_max_pattern_value(workflow_id):
+    # Use func.max to get the maximum value of the Pattern column for the given WorkflowId
+    max_value = session.query(func.max(VolumeMatrix.Pattern)).filter(VolumeMatrix.WorkflowId == workflow_id).scalar()
+    return max_value
+
+# Example usage
+workflow_id = 1  # Replace with the actual WorkflowId you are querying
+max_value = get_max_pattern_value(workflow_id)
+print(f"The maximum pattern value for WorkflowId {workflow_id} is {max_value}")
+
+
+
+
+
+
+
 <template>
   <v-container class="pb-16">
     <v-form ref="form" @submit.prevent="submitForm" v-model="valid">
