@@ -72,6 +72,82 @@ export default {
 
 
 
+
+
+<template>
+  <v-container>
+    <v-file-input
+      v-model="file"
+      label="Upload File"
+      @change="handleFileUpload"
+      accept=".csv, .xlsx, .xls"
+    ></v-file-input>
+    
+    <!-- Display Success and Error Messages -->
+    <v-dialog v-model="dialog" max-width="600">
+      <v-card>
+        <v-card-title>
+          <span class="headline">Upload Results</span>
+        </v-card-title>
+        <v-card-text>
+          <v-alert v-if="results.errors.length" type="error">
+            <ul>
+              <li v-for="(error, index) in results.errors" :key="index">
+                Row {{ error.row }}: {{ error.error }}
+              </li>
+            </ul>
+          </v-alert>
+          
+          <v-alert v-if="results.success.length" type="success">
+            Successfully processed {{ results.success.length }} rows.
+          </v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="blue darken-1" text @click="dialog = false">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+  </v-container>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      file: null,
+      dialog: false,
+      results: {
+        success: [],
+        errors: []
+      }
+    };
+  },
+  methods: {
+    async handleFileUpload() {
+      const formData = new FormData();
+      formData.append('file', this.file);
+
+      try {
+        const response = await fetch('/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await response.json();
+        
+        this.results = data;
+        this.dialog = true;
+      } catch (error) {
+        console.error('Error uploading file:', error);
+      }
+    }
+  }
+};
+</script>
+
+
+
+
 import os
 import pandas as pd
 from werkzeug.utils import secure_filename
