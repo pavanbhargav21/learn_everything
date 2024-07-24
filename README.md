@@ -385,7 +385,14 @@ class WorkflowUploadResource(Resource):
                             })
                 
                 os.remove(file_path)
-                retur
+                return jsonify({'message': f'Error processing file: {str(e)}'}), 500
+        
+        return jsonify({'message': 'File type not allowed'}), 400
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'csv', 'xlsx', 'xls'}
+
+api.add_resource(WorkflowUploadResource, '/upload')
 
 
 
