@@ -1,3 +1,25 @@
+**Instructions for Uploading Data**
+
+1. **Do Not Alter Sheet Names or Column Names**:
+   - The sheet names and column names in this workbook are crucial for processing your data. Do not change them.
+
+2. **Entering Data**:
+   - Enter your data in the specified sheets according to the column headings provided.
+
+3. **Workflow Names**:
+   - If you are adding a new workflow name, ensure that the workflow name already exists in the 'Plugin Master' sheet.
+   - You must list any new workflow names in the 'Plugin Master' sheet. This is necessary for your data to be accepted.
+
+4. **Saving Your File**:
+   - Save your changes and ensure that the file is saved in `.xlsx` format before uploading it.
+
+**Thank you for following these instructions.**
+
+
+
+
+
+
 <template>
   <v-container>
     <v-file-input
