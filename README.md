@@ -1,3 +1,454 @@
+Got it. I'll update the backend code to use the `session_scope` context manager as described. Here's how the backend modifications and complete files will look:
+
+### `upload.py` (Backend)
+
+```python
+from flask_restful import Resource, reqparse
+from flask import request, jsonify
+from your_project import db
+from your_project.models import Workflow, WorkflowMaster, KeyNameMapping, VolumeMatrix
+from your_project.utils import process_plugin_master, process_workflow_master, process_key_names, process_volumes
+from your_project.session_manager import session_scope
+
+class UploadExcel(Resource):
+    def post(self):
+        # Parse the file from the request
+        parser = reqparse.RequestParser()
+        parser.add_argument('file', type='file', location='files', required=True)
+        args = parser.parse_args()
+        
+        file = args['file']
+        if not file:
+            return {'message': 'No file provided'}, 400
+        
+        # Handle the file upload and processing
+        try:
+            with session_scope() as session:
+                results = self.process_file(file, session)
+            return jsonify(results)
+        except Exception as e:
+            return {'message': str(e)}, 500
+
+    def process_file(self, file, session):
+        # Load the Excel file and process sheets
+        # Assuming you have a utility function to read and process Excel sheets
+        plugin_master_data = process_plugin_master(file)
+        workflow_master_data = process_workflow_master(file)
+        key_names_data = process_key_names(file)
+        volumes_data = process_volumes(file)
+        
+        results = {
+            'plugin_master': self.process_plugin_master_data(plugin_master_data, session),
+            'workflow_master': self.process_workflow_master_data(workflow_master_data, session),
+            'key_names': self.process_key_names_data(key_names_data, session),
+            'volumes': self.process_volumes_data(volumes_data, session),
+        }
+        return results
+    
+    def process_plugin_master_data(self, data, session):
+        # Process Plugin Master sheet
+        result = {'success': [], 'errors': []}
+        for row in data:
+            workflow_name = row.get('workflow_name')
+            if not workflow_name:
+                result['errors'].append(f"Missing workflow name in row: {row}")
+                continue
+            
+            existing = session.query(Workflow).filter_by(name=workflow_name).first()
+            if existing:
+                continue  # Skip if it already exists
+            
+            # Add new entry
+            new_workflow = Workflow(name=workflow_name, system=row.get('system'))
+            session.add(new_workflow)
+            result['success'].append(workflow_name)
+        
+        return result
+
+    def process_workflow_master_data(self, data, session):
+        # Process Workflow Master sheet
+        result = {'success': [], 'errors': [], 'missing_workflow_names': []}
+        for row in data:
+            workflow_name = row.get('workflow_name')
+            if not workflow_name:
+                result['errors'].append(f"Missing workflow name in row: {row}")
+                continue
+            
+            existing = session.query(Workflow).filter_by(name=workflow_name).first()
+            if not existing:
+                result['missing_workflow_names'].append(workflow_name)
+                continue
+            
+            # Check for duplicates and add to whitelist
+            existing_whitelist = session.query(WorkflowMaster).filter_by(
+                workflow_name=workflow_name,
+                virtual_url=row.get('virtual_url'),
+                environment=row.get('environment'),
+                window_titles=row.get('window_titles')
+            ).first()
+            
+            if existing_whitelist:
+                continue  # Skip if it already exists
+            
+            # Add new entry
+            new_entry = WorkflowMaster(
+                workflow_name=workflow_name,
+                virtual_url=row.get('virtual_url'),
+                environment=row.get('environment'),
+                window_titles=row.get('window_titles')
+            )
+            session.add(new_entry)
+            result['success'].append(workflow_name)
+        
+        return result
+
+    def process_key_names_data(self, data, session):
+        # Process Key Names sheet
+        result = {'success': [], 'errors': [], 'missing_workflow_names': []}
+        for row in data:
+            workflow_name = row.get('workflow_name')
+            if not workflow_name:
+                result['errors'].append(f"Missing workflow name in row: {row}")
+                continue
+            
+            existing = session.query(Workflow).filter_by(name=workflow_name).first()
+            if not existing:
+                result['missing_workflow_names'].append(workflow_name)
+                continue
+            
+            # Check for duplicates and add to key name mapping
+            existing_key_name = session.query(KeyNameMapping).filter_by(
+                workflow_name=workflow_name,
+                key_name=row.get('key_name'),
+                layout=row.get('layout'),
+                remarks=row.get('remarks')
+            ).first()
+            
+            if existing_key_name:
+                continue  # Skip if it already exists
+            
+            # Add new entry
+            new_entry = KeyNameMapping(
+                workflow_name=workflow_name,
+                key_name=row.get('key_name'),
+                layout=row.get('layout'),
+                remarks=row.get('remarks')
+            )
+            session.add(new_entry)
+            result['success'].append(workflow_name)
+        
+        return result
+
+    def process_volumes_data(self, data, session):
+        # Process Volumes sheet
+        result = {'success': [], 'errors': [], 'missing_workflow_names': []}
+        for row in data:
+            workflow_name = row.get('workflow_name')
+            if not workflow_name:
+                result['errors'].append(f"Missing workflow name in row: {row}")
+                continue
+            
+            existing = session.query(Workflow).filter_by(name=workflow_name).first()
+            if not existing:
+                result['missing_workflow_names'].append(workflow_name)
+                continue
+            
+            # Check for duplicates and add to volume matrix
+            existing_volume = session.query(VolumeMatrix).filter_by(
+                workflow_name=workflow_name,
+                pattern=row.get('pattern'),
+                key_names=row.get('key_names'),
+                key_type=row.get('key_type'),
+                layout=row.get('layout')
+            ).first()
+            
+            if existing_volume:
+                continue  # Skip if it already exists
+            
+            # Add new entry
+            new_entry = VolumeMatrix(
+                workflow_name=workflow_name,
+                pattern=row.get('pattern'),
+                key_names=row.get('key_names'),
+                key_type=row.get('key_type'),
+                layout=row.get('layout')
+            )
+            session.add(new_entry)
+            result['success'].append(workflow_name)
+        
+        return result
+```
+
+### `view.vue` (Frontend)
+
+```vue
+<template>
+  <div>
+    <v-tabs v-model="activeTab" fixed-tabs>
+      <v-tab v-for="(item, index) in items" :key="index">{{ item }}</v-tab>
+    </v-tabs>
+    <v-btn @click="openUploadDialog">Upload Excel</v-btn>
+
+    <v-dialog v-model="uploadDialogVisible" max-width="600">
+      <v-card>
+        <v-card-title class="title-bold-stylish">
+          Please ensure your Excel file has the following format
+        </v-card-title>
+        <v-card-subtitle class="text-center">
+          <v-btn @click="downloadTemplate" class="excel-bold-stylish">
+            Download Template
+          </v-btn>
+        </v-card-subtitle>
+        <v-card-text>
+          <v-file-input @change="handleFileUpload" accept=".xlsx" label="Select File" />
+        </v-card-text>
+        <v-card-actions>
+          <v-btn @click="uploadFile" :loading="isUploading" :disabled="isUploading">
+            Upload
+          </v-btn>
+          <v-btn @click="closeUploadDialog">Cancel</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor">
+      {{ snackbarText }}
+    </v-snackbar>
+  </div>
+</template>
+
+<script>
+import axios from '../axios';
+import EventBus from '../eventBus';
+
+export default {
+  data() {
+    return {
+      items: ['Workflow Master', 'Keyname Mapping', 'Volume Matrix'],
+      activeTab: 0,
+      storeDialogVisible: false,
+      uploadDialogVisible: false,
+      file: null,
+      isUploading: false,
+      snackbar: false,
+      snackbarText: '',
+      snackbarColor: 'success',
+    };
+  },
+  methods: {
+    openUploadDialog() {
+      this.uploadDialogVisible = true;
+    },
+    closeUploadDialog() {
+      this.uploadDialogVisible = false;
+      this.file = null;
+    },
+    downloadTemplate() {
+      const link = document.createElement('a');
+      link.href = '/template.xlsx';
+      link.download = 'template.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    },
+    handleFileUpload(event) {
+      const fileInput = event.target;
+      if (fileInput.files.length > 0) {
+        this.file = fileInput.files[0];
+      } else {
+        this.file = null;
+      }
+    },
+    async uploadFile() {
+      if (!this.file) {
+        this.showSnackbar('Please select a file', 'error');
+        return;
+      }
+
+      this.isUploading = true;
+      const formData = new FormData();
+      formData.append('file', this.file);
+
+      try {
+        const response = await axios.post('/api/upload_excel/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+
+        if (response.data) {
+          this.showSnackbar('Upload Successful', 'success');
+          EventBus.$emit('data-uploaded', response.data);
+        } else {
+          this.showSnackbar('Unexpected response Format', 'error');
+        }
+      } catch (error)
+
+
+
+
+
+
+
+
+
+
+
+
+You're correct; in the code, I used `.capitalize()` to adjust the column names. This method might not be appropriate if your actual column names in the Excel sheets have specific capitalization requirements and no spaces. Given that your column names have a specific format (e.g., `WorkflowName`, `System`), they should be directly matched without altering their capitalization.
+
+Here’s the revised code with the column names matched exactly as specified:
+
+### Backend (Flask)
+
+**`upload_excel.py`**
+```python
+from flask_restful import Resource, reqparse
+from flask import request
+import pandas as pd
+from app import session_scope
+from models import Workflow, Whitelist, KeyNameMapping, VolumeMatrix
+
+class UploadExcel(Resource):
+    def __init__(self):
+        self.parser = reqparse.RequestParser()
+        self.parser.add_argument('file', type=werkzeug.datastructures.FileStorage, location='files', required=True)
+
+    def post(self):
+        args = self.parser.parse_args()
+        file = args['file']
+        
+        if file and allowed_file(file.filename):
+            try:
+                with session_scope() as session:
+                    # Read the Excel file
+                    excel_data = pd.read_excel(file, sheet_name=None)
+                    
+                    results = {}
+                    
+                    # Process Plugin Master sheet
+                    plugin_master_data = excel_data.get('PLUGIN_MASTER')
+                    if plugin_master_data is not None:
+                        if 'WorkflowName' in plugin_master_data.columns and 'System' in plugin_master_data.columns:
+                            for _, row in plugin_master_data.iterrows():
+                                workflow_name = row['WorkflowName']
+                                system = row['System']
+                                if not session.query(Workflow).filter_by(workflow_name=workflow_name).first():
+                                    new_workflow = Workflow(workflow_name=workflow_name, system=system)
+                                    session.add(new_workflow)
+                    
+                    # Process Workflow Master sheet
+                    workflow_master_data = excel_data.get('WORKFLOW_MASTER')
+                    if workflow_master_data is not None:
+                        if all(col in workflow_master_data.columns for col in ['WorkflowName', 'WorkflowUrl', 'Environment', 'WindowTitles']):
+                            for _, row in workflow_master_data.iterrows():
+                                workflow_name = row['WorkflowName']
+                                if session.query(Workflow).filter_by(workflow_name=workflow_name).first():
+                                    if not session.query(Whitelist).filter_by(
+                                        workflow_name=workflow_name,
+                                        workflow_url=row['WorkflowUrl'],
+                                        environment=row['Environment'],
+                                        window_titles=row['WindowTitles']
+                                    ).first():
+                                        new_whitelist = Whitelist(
+                                            workflow_name=workflow_name,
+                                            workflow_url=row['WorkflowUrl'],
+                                            environment=row['Environment'],
+                                            window_titles=row['WindowTitles']
+                                        )
+                                        session.add(new_whitelist)
+                                else:
+                                    if 'missing_workflow_names' not in results:
+                                        results['missing_workflow_names'] = []
+                                    results['missing_workflow_names'].append(workflow_name)
+                    
+                    # Process Key Names sheet
+                    key_names_data = excel_data.get('KEY_NAMES')
+                    if key_names_data is not None:
+                        if all(col in key_names_data.columns for col in ['WorkflowName', 'KeyName', 'Layout', 'Remarks']):
+                            for _, row in key_names_data.iterrows():
+                                workflow_name = row['WorkflowName']
+                                if session.query(Workflow).filter_by(workflow_name=workflow_name).first():
+                                    if not session.query(KeyNameMapping).filter_by(
+                                        workflow_name=workflow_name,
+                                        key_name=row['KeyName'],
+                                        layout=row['Layout'],
+                                        remarks=row['Remarks']
+                                    ).first():
+                                        new_keyname = KeyNameMapping(
+                                            workflow_name=workflow_name,
+                                            key_name=row['KeyName'],
+                                            layout=row['Layout'],
+                                            remarks=row['Remarks']
+                                        )
+                                        session.add(new_keyname)
+                                else:
+                                    if 'missing_workflow_names' not in results:
+                                        results['missing_workflow_names'] = []
+                                    results['missing_workflow_names'].append(workflow_name)
+                    
+                    # Process Volumes sheet
+                    volumes_data = excel_data.get('VOLUMES')
+                    if volumes_data is not None:
+                        if all(col in volumes_data.columns for col in ['WorkflowName', 'Pattern', 'KeyName', 'KeyType', 'Layout']):
+                            for _, row in volumes_data.iterrows():
+                                workflow_name = row['WorkflowName']
+                                if session.query(Workflow).filter_by(workflow_name=workflow_name).first():
+                                    if not session.query(VolumeMatrix).filter_by(
+                                        workflow_name=workflow_name,
+                                        pattern=row['Pattern'],
+                                        key_name=row['KeyName'],
+                                        key_type=row['KeyType'],
+                                        layout=row['Layout']
+                                    ).first():
+                                        new_volume = VolumeMatrix(
+                                            workflow_name=workflow_name,
+                                            pattern=row['Pattern'],
+                                            key_name=row['KeyName'],
+                                            key_type=row['KeyType'],
+                                            layout=row['Layout']
+                                        )
+                                        session.add(new_volume)
+                                else:
+                                    if 'missing_workflow_names' not in results:
+                                        results['missing_workflow_names'] = []
+                                    results['missing_workflow_names'].append(workflow_name)
+                    
+                    return {'status': 'success', 'data': results}, 200
+            
+            except Exception as e:
+                return {'status': 'error', 'message': str(e)}, 500
+
+def allowed_file(filename):
+    allowed_extensions = {'xls', 'xlsx'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
+```
+
+### Summary of Updates:
+- **Column Names Matching:** Ensured the column names are used exactly as provided, with no modifications to capitalization or spacing.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 **Instructions for Uploading Data**
 
 1. **Do Not Alter Sheet Names or Column Names**:
