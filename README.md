@@ -1,3 +1,187 @@
+<template>
+  <v-app>
+    <v-container>
+      <!-- Tabs for navigation -->
+      <v-tabs v-model="activeTab" fixed-tabs>
+        <v-tab v-for="(item, index) in items" :key="index">{{ item }}</v-tab>
+      </v-tabs>
+
+      <!-- Upload Excel Button -->
+      <v-btn @click="openUploadDialog">Upload Excel</v-btn>
+
+      <!-- Upload Dialog -->
+      <v-dialog v-model="uploadDialogVisible" max-width="600">
+        <v-card>
+          <v-card-title class="title-bold-stylish">
+            Please ensure your Excel file has the following format
+          </v-card-title>
+          <v-card-subtitle class="text-center">
+            <v-btn @click="downloadTemplate" class="excel-bold-stylish">
+              Download Template
+            </v-btn>
+          </v-card-subtitle>
+          <v-card-text>
+            <v-file-input @change="handleFileUpload" accept=".xlsx" label="Select File" />
+          </v-card-text>
+          <v-card-actions>
+            <v-btn @click="uploadFile" :loading="isUploading" :disabled="isUploading">
+              Upload
+            </v-btn>
+            <v-btn @click="closeUploadDialog">Cancel</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
+      <!-- Data Display Dialog -->
+      <v-dialog v-model="dataDialogVisible" max-width="800">
+        <v-card>
+          <v-card-title class="title-bold-stylish">Upload Results</v-card-title>
+          <v-card-text>
+            <v-tabs v-model="dataTab">
+              <v-tab v-for="(sheet, index) in Object.keys(missingWorkflows)" :key="index">
+                {{ sheet }}
+              </v-tab>
+            </v-tabs>
+
+            <v-tabs-items v-model="dataTab">
+              <v-tab-item v-for="(sheet, index) in Object.keys(missingWorkflows)" :key="index">
+                <v-list>
+                  <v-list-item-group>
+                    <v-list-item v-for="(workflow, i) in missingWorkflows[sheet]" :key="i">
+                      <v-list-item-content>
+                        <v-list-item-title>{{ workflow }}</v-list-item-title>
+                      </v-list-item-content>
+                    </v-list-item>
+                  </v-list>
+                </v-tab-item>
+              </v-tabs-items>
+            </v-tabs-items>
+          </v-card-text>
+          <v-card-actions>
+            <v-btn @click="closeDataDialog">Close</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
+      <!-- Snackbar for status messages -->
+      <v-snackbar v-model="snackbar" :color="snackbarColor">
+        {{ snackbarText }}
+      </v-snackbar>
+    </v-container>
+  </v-app>
+</template>
+
+<script>
+import axios from '../axios';
+import EventBus from '../eventBus';
+
+export default {
+  data() {
+    return {
+      items: ['Workflow Master', 'Keyname Mapping', 'Volume Matrix'],
+      activeTab: 0,
+      uploadDialogVisible: false,
+      dataDialogVisible: false,
+      file: null,
+      isUploading: false,
+      snackbar: false,
+      snackbarText: '',
+      snackbarColor: 'success',
+      missingWorkflows: {}, // Stores missing workflows data by sheet
+      dataTab: 0, // To switch tabs in the data dialog
+    };
+  },
+  methods: {
+    openUploadDialog() {
+      this.uploadDialogVisible = true;
+    },
+    closeUploadDialog() {
+      this.uploadDialogVisible = false;
+      this.file = null;
+    },
+    openDataDialog(data) {
+      // Populate missingWorkflows based on the received data
+      this.missingWorkflows = data.missingWorkflows;
+      this.dataDialogVisible = true;
+    },
+    closeDataDialog() {
+      this.dataDialogVisible = false;
+    },
+    downloadTemplate() {
+      const link = document.createElement('a');
+      link.href = '/template.xlsx';
+      link.download = 'template.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    },
+    handleFileUpload(event) {
+      const fileInput = event.target;
+      if (fileInput.files.length > 0) {
+        this.file = fileInput.files[0];
+      } else {
+        this.file = null;
+      }
+    },
+    async uploadFile() {
+      if (!this.file) {
+        this.showSnackbar('Please select a file', 'error');
+        return;
+      }
+
+      this.isUploading = true;
+      const formData = new FormData();
+      formData.append('file', this.file);
+
+      try {
+        const response = await axios.post('/api/upload_excel/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+
+        if (response.data) {
+          this.showSnackbar('Upload Successful', 'success');
+          this.openDataDialog(response.data);
+        } else {
+          this.showSnackbar('Unexpected response format', 'error');
+        }
+      } catch (error) {
+        this.showSnackbar('Upload failed. Please try again.', 'error');
+      } finally {
+        this.isUploading = false;
+      }
+    },
+    showSnackbar(text, color) {
+      this.snackbarText = text;
+      this.snackbarColor = color;
+      this.snackbar = true;
+    }
+  },
+  mounted() {
+    // Listen for data-uploaded events if needed
+    EventBus.$on('data-uploaded', (data) => {
+      this.openDataDialog(data);
+    });
+  }
+};
+</script>
+
+<style>
+/* Add any required styling here */
+.title-bold-stylish {
+  font-weight: bold;
+  font-size: 18px;
+}
+.excel-bold-stylish {
+  font-weight: bold;
+}
+</style>
+
+
+
+
+
+
+
 Got it. I'll update the backend code to use the `session_scope` context manager as described. Here's how the backend modifications and complete files will look:
 
 ### `upload.py` (Backend)
