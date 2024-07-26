@@ -1,4 +1,525 @@
 <template>
+  <v-card class="main-card">
+    <!-- Toolbar -->
+    <v-toolbar color="primary darken-1" dark elevation="2">
+      <v-toolbar-title class="title-bold-stylish">Pulse Configurator</v-toolbar-title>
+      <template v-slot:prepend>
+        <img src="../assets/logo.png" alt="Logo" class="mr-3" height="40" />
+      </template>
+
+      <template v-slot:extension>
+        <v-tabs v-model="activeTab" align-tabs="title" class="tab-bold-stylish">
+          <v-tab v-for="(item, index) in items" :key="item" :value="index">
+            {{ item }}
+          </v-tab>
+        </v-tabs>
+
+        <v-spacer></v-spacer>
+
+        <v-btn @click="openStore" class="store-bold-stylish flickering-btn" color="accent">
+          <v-icon left>mdi-arch</v-icon>
+          {{ storeButtonText }}
+        </v-btn>
+
+        <v-spacer></v-spacer>
+
+        <v-btn @click="openUploadDialog" class="excel-bold-stylish" color="success">
+          Upload Excel
+          <v-icon right>mdi-file-upload</v-icon>
+        </v-btn>
+      </template>
+    </v-toolbar>
+
+    <!-- Tabs Content -->
+    <v-tabs-items v-model="activeTab">
+      <v-tab-item :value="0">
+        <WorkflowConfigurator v-if="activeTab === 0" />
+      </v-tab-item>
+
+      <v-tab-item :value="1">
+        <KeynameMapping v-if="activeTab === 1" />
+      </v-tab-item>
+
+      <v-tab-item :value="2">
+        <VolumeMatrix v-if="activeTab === 2" />
+      </v-tab-item>
+    </v-tabs-items>
+
+    <!-- Store Dialog -->
+    <component :is="storeComponent" v-model:dialogVisible="storeDialogVisible" />
+
+    <!-- Upload Dialog -->
+    <v-dialog v-model="uploadDialogVisible" max-width="800">
+      <v-card class="upload-dialog">
+        <v-card-title class="headline">Upload Excel File</v-card-title>
+        <v-card-subtitle class="text-center">
+          <v-btn @click="downloadTemplate" class="excel-bold-stylish" color="primary">
+            Download Template
+          </v-btn>
+        </v-card-subtitle>
+        <v-card-text>
+          <v-file-input
+            @change="handleFileUpload"
+            accept=".xlsx"
+            label="Select File"
+            prepend-icon="mdi-file-excel"
+            show-size
+            outlined
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn @click="uploadFile" :loading="isUploading" :disabled="isUploading" color="primary">
+            Upload
+          </v-btn>
+          <v-btn @click="closeUploadDialog" color="grey darken-1" text>Cancel</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Data Display Dialog -->
+    <v-dialog v-model="dataDialogVisible" max-width="800">
+      <v-card class="data-dialog">
+        <v-card-title class="headline">Upload Results</v-card-title>
+        <v-card-text>
+          <v-tabs v-model="dataTab" color="primary" grow>
+            <v-tab v-for="(sheet, index) in Object.keys(missingWorkflows)" :key="index">
+              {{ sheet }}
+            </v-tab>
+          </v-tabs>
+
+          <v-tabs-items v-model="dataTab">
+            <v-tab-item v-for="(sheet, index) in Object.keys(missingWorkflows)" :key="index">
+              <v-card flat class="sheet-card">
+                <v-card-text>
+                  <h3 class="mb-4">Missing Workflows in {{ sheet }}</h3>
+                  <v-list v-if="missingWorkflows[sheet].length > 0" class="missing-list">
+                    <v-list-item v-for="(workflow, i) in missingWorkflows[sheet]" :key="i" class="missing-item">
+                      <v-list-item-icon>
+                        <v-icon color="error">mdi-alert-circle</v-icon>
+                      </v-list-item-icon>
+                      <v-list-item-content>
+                        <v-list-item-title>{{ workflow }}</v-list-item-title>
+                      </v-list-item-content>
+                    </v-list-item>
+                  </v-list>
+                  <v-alert v-else type="success" text class="success-alert">
+                    No missing workflows in this sheet.
+                  </v-alert>
+                </v-card-text>
+              </v-card>
+            </v-tab-item>
+          </v-tabs-items>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" @click="closeDataDialog">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Snackbar for status messages -->
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="4000">
+      {{ snackbarText }}
+      <template v-slot:action="{ attrs }">
+        <v-btn text v-bind="attrs" @click="snackbar = false">Close</v-btn>
+      </template>
+    </v-snackbar>
+  </v-card>
+</template>
+
+<script>
+import KeynameMapping from './KeynameMapping.vue';
+import AppStore from './AppStore.vue';
+import WorkflowConfigurator from './WorkflowConfigurator.vue';
+import KeyStore from './KeyStore.vue';
+import VolumeMatrix from './VolumeMatrix.vue';
+import VolumeStore from './VolumeStore.vue';
+import axios from '../axios';
+
+export default {
+  components: {
+    WorkflowConfigurator,
+    AppStore,
+    KeynameMapping,
+    KeyStore,
+    VolumeStore,
+    VolumeMatrix,
+  },
+  
+  data() {
+    return {
+      items: ['Workflow Master', 'Keyname Mapping', 'Volume Matrix'],
+      activeTab: 0,
+      storeDialogVisible: false,
+      uploadDialogVisible: false,
+      dataDialogVisible: false,
+      file: null,
+      isUploading: false,
+      snackbar: false,
+      snackbarText: '',
+      snackbarColor: 'success',
+      missingWorkflows: {},
+      dataTab: 0,
+    };
+  },
+
+  computed: {
+    storeButtonText() {
+      const texts = ['View AppStore', 'View KeyStore', 'View VolumeStore'];
+      return texts[this.activeTab];
+    },
+
+    storeComponent() {
+      const components = ['AppStore', 'KeyStore', 'VolumeStore'];
+      return components[this.activeTab];
+    },
+  },
+
+  methods: {
+    openStore() {
+      this.storeDialogVisible = true;
+    },
+
+    openUploadDialog() {
+      this.uploadDialogVisible = true;
+    },
+
+    closeUploadDialog() {
+      this.uploadDialogVisible = false;
+      this.file = null;
+    },
+
+    downloadTemplate() {
+      const link = document.createElement('a');
+      link.href = '/template.xlsx';
+      link.download = 'template.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    },
+
+    handleFileUpload(event) {
+      this.file = event.target.files[0];
+    },
+
+    async uploadFile() {
+      if (!this.file) {
+        this.showSnackbar('Please select a file', 'error');
+        return;
+      }
+
+      this.isUploading = true;
+      const formData = new FormData();
+      formData.append('file', this.file);
+
+      try {
+        const response = await axios.post('/api/upload/', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+
+        if (response.data && response.data.status === 'success') {
+          this.showSnackbar('Upload Successful', 'success');
+          this.uploadDialogVisible = false;
+          this.file = null;
+          this.missingWorkflows = response.data.data;
+          this.openDataDialog();
+        } else {
+          this.showSnackbar('Unexpected response format', 'error');
+        }
+      } catch (error) {
+        this.showSnackbar('Upload failed. Please try again.', 'error');
+      } finally {
+        this.isUploading = false;
+      }
+    },
+
+    openDataDialog() {
+      this.dataDialogVisible = true;
+    },
+
+    closeDataDialog() {
+      this.dataDialogVisible = false;
+    },
+
+    showSnackbar(text, color) {
+      this.snackbarText = text;
+      this.snackbarColor = color;
+      this.snackbar = true;
+    },
+  },
+};
+</script>
+
+<style scoped>
+.main-card {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.title-bold-stylish {
+  font-weight: bold;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 28px;
+  color: #ffffff;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+}
+
+.tab-bold-stylish {
+  font-weight: bold;
+  font-family: 'Roboto', sans-serif;
+  font-size: 16px;
+  text-transform: uppercase;
+}
+
+.store-bold-stylish {
+  font-weight: bold;
+  font-family: 'Roboto', sans-serif;
+  font-size: 14px;
+  letter-spacing: 1px;
+  transition: all 0.3s;
+}
+
+.excel-bold-stylish {
+  font-weight: bold;
+  font-family: 'Roboto', sans-serif;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.flickering-btn {
+  animation: flicker 2s infinite;
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.upload-dialog,
+.data-dialog {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.headline {
+  background-color: #3f51b5;
+  color: white;
+  font-size: 24px;
+  padding: 16px;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.sheet-card {
+  margin-top: 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.missing-list {
+  background-color: #fff8e1;
+  border-radius: 8px;
+}
+
+.missing-item {
+  border-bottom: 1px solid #ffe082;
+  transition: background-color 0.3s;
+}
+
+.missing-item:last-child {
+  border-bottom: none;
+}
+
+.missing-item:hover {
+  background-color: #ffecb3;
+}
+
+.success-alert {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  font-weight: bold;
+}
+</style>
+
+
+--------------------------------
+
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_cors import cross_origin
+from datetime import datetime
+import pandas as pd
+import os
+from werkzeug.utils import secure_filename
+from app.models import Workflow, Whitelist, KeyNameMapping, VolumeMatrix
+from app import session_scope
+
+bp = Blueprint('upload', __name__, url_prefix='/api/upload')
+api = Api(bp)
+
+class UploadResource(Resource):
+    @cross_origin()
+    def post(self):
+        if 'file' not in request.files:
+            return jsonify({'message': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'message': 'No selected file'}), 400
+        
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file_path = os.path.join('/tmp', filename)
+            file.save(file_path)
+            try:
+                with session_scope() as session:
+                    results = {
+                        'PLUGIN_MASTER': [],
+                        'WORKFLOW_MASTER': [],
+                        'KEY_NAMES': [],
+                        'VOLUMES': []
+                    }
+                    
+                    # Process Plugin Master sheet
+                    plugin_master_data = pd.read_excel(file, sheet_name='PLUGIN_MASTER', header=1)
+                    if plugin_master_data is not None:
+                        if 'WorkflowName' in plugin_master_data.columns and 'System' in plugin_master_data.columns:
+                            for _, row in plugin_master_data.iterrows():
+                                workflow_name = str(row['WorkflowName'])
+                                if not session.query(Workflow).filter_by(workflow_name=workflow_name, is_active=True).first():
+                                    new_workflow = Workflow(
+                                        workflow_name=workflow_name, 
+                                        system_name=row['System'],
+                                        is_active=True,
+                                        created_date=datetime.utcnow()
+                                    )
+                                    session.add(new_workflow)
+                    
+                    # Process Workflow Master sheet
+                    workflow_master_data = pd.read_excel(file, sheet_name='WORKFLOW_MASTER', header=1)
+                    if workflow_master_data is not None:
+                        if all(col in workflow_master_data.columns for col in ['WorkflowName', 'WorkflowUrl', 'Environment', 'WindowTitles']):
+                            for _, row in workflow_master_data.iterrows():
+                                workflow_name = str(row['WorkflowName'])
+                                if not session.query(Workflow).filter_by(workflow_name=workflow_name).first():
+                                    results['WORKFLOW_MASTER'].append(workflow_name)
+                                else:
+                                    work_id = session.query(Workflow).filter_by(workflow_name=workflow_name).first().id
+                                    if not session.query(Whitelist).filter_by(
+                                        workflow_id=work_id,
+                                        workflow_name=workflow_name,
+                                        workflow_url=row['WorkflowUrl'],
+                                        environment=row['Environment'],
+                                        window_titles=row['WindowTitles'],
+                                        is_active=True
+                                    ).first():
+                                        new_whitelist = Whitelist(
+                                            workflow_id=work_id,
+                                            workflow_name=workflow_name,
+                                            workflow_url=row['WorkflowUrl'],
+                                            environment=row['Environment'],
+                                            window_titles=row['WindowTitles'],
+                                            is_active=True,
+                                            created_date=datetime.utcnow()
+                                        )
+                                        session.add(new_whitelist)
+                    
+                    # Process Key Names sheet
+                    key_names_data = pd.read_excel(file, sheet_name='KEY_NAMES', header=1)
+                    if key_names_data is not None:
+                        if all(col in key_names_data.columns for col in ['WorkflowName', 'Keyname', 'Layout', 'Remarks']):
+                            for _, row in key_names_data.iterrows():
+                                workflow_name = str(row['WorkflowName'])
+                                if not session.query(Workflow).filter_by(workflow_name=workflow_name).first():
+                                    results['KEY_NAMES'].append(workflow_name)
+                                else:
+                                    work_id = session.query(Workflow).filter_by(workflow_name=workflow_name).first().id
+                                    if not session.query(KeyNameMapping).filter_by(
+                                        workflow_id=work_id,
+                                        activity_key_name=row['Keyname'],
+                                        activity_key_layout=row['Layout'],
+                                        remarks=row['Remarks'],
+                                        is_active=True
+                                    ).first():
+                                        new_keyname = KeyNameMapping(
+                                            workflow_id=work_id,
+                                            activity_key_name=row['Keyname'],
+                                            activity_key_layout=row['Layout'],
+                                            remarks=row['Remarks'],
+                                            is_active=True,
+                                            created_date=datetime.utcnow()
+                                        )
+                                        session.add(new_keyname)
+                    
+                    # Process Volumes sheet
+                    volumes_data = pd.read_excel(file, sheet_name='VOLUMES', header=1)
+                    if volumes_data is not None:
+                        if all(col in volumes_data.columns for col in ['WorkflowName', 'Pattern', 'Keyname', 'Keytype', 'Layout']):
+                            for _, row in volumes_data.iterrows():
+                                workflow_name = str(row['WorkflowName'])
+                                if not session.query(Workflow).filter_by(workflow_name=workflow_name).first():
+                                    results['VOLUMES'].append(workflow_name)
+                                else:
+                                    work_id = session.query(Workflow).filter_by(workflow_name=workflow_name).first().id
+                                    if not session.query(VolumeMatrix).filter_by(
+                                        workflow_id=work_id,
+                                        pattern=int(row['Pattern']),
+                                        activity_key_name=row['Keyname'],
+                                        activity_key_type=row['Keytype'],
+                                        activity_key_layout=row['Layout'],
+                                        is_active=True
+                                    ).first():
+                                        new_volume = VolumeMatrix(
+                                            workflow_id=work_id,
+                                            pattern=int(row['Pattern']),
+                                            activity_key_name=row['Keyname'],
+                                            activity_key_type=row['Keytype'],
+                                            activity_key_layout=row['Layout'],
+                                            is_active=True,
+                                            created_date=datetime.utcnow()
+                                        )
+                                        session.add(new_volume)
+                    
+                    return {'status': 'success', 'data': results}, 200
+            
+            except Exception as e:
+                return {'status': 'error', 'message': str(e)}, 500
+
+def allowed_file(filename):
+    allowed_extensions = {'xls', 'xlsx'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
+api.add_resource(UploadResource, '/')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------
+----------------------------------------------------------------
+-----------------------------------------------------------------
+
+<template>
   <v-app>
     <v-container>
       <!-- Tabs for navigation -->
