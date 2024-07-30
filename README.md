@@ -1,4 +1,144 @@
 
+To handle this scenario efficiently and keep the design modular, you can follow these steps:
+
+### Strategy Overview
+
+1. **Modular Endpoint Design**: Create a primary endpoint that returns the HR-5 service details, including HR-4 details, HR-5 opposite services, skill matching percentage, and manager details. For the employee details, use a separate endpoint to fetch the specific employees associated with an HR-5 opposite service.
+
+2. **Dynamic Data Fetching**: For each HR-5 opposite service, you will need to fetch the employee details dynamically based on user interaction (e.g., clicking a "Show Employees" button).
+
+3. **Future-proofing**: By separating concerns into different endpoints, you ensure that changes in one part of the system (e.g., employee details) do not require modifications to the other parts (e.g., HR-4 and HR-5 details).
+
+### Implementation
+
+#### 1. **Primary Endpoint for HR-5 Details**
+
+This endpoint will provide the HR-5 details, HR-4 details, and matching percentages. It should also include links or identifiers that can be used to fetch additional details (like employee details) later.
+
+```python
+from flask import Flask, jsonify, request
+from flask_restful import Api, Resource
+from models import db, SkillMatching, EmployeeDetails  # Adjust imports as needed
+
+app = Flask(__name__)
+api = Api(app)
+
+def get_service_details(service_name):
+    # Fetch the HR-5 service
+    hr5_service = SkillMatching.query.filter(
+        SkillMatching.service_name == service_name
+    ).first()
+
+    if not hr5_service:
+        return {'error': 'Service not found'}, 404
+
+    # Determine the type of HR-5 service and find corresponding HR-5 opposite services
+    opposite_services = SkillMatching.query.filter(
+        (SkillMatching.service_name.like('HR-5 Borrower%') if 'Lender' in service_name else
+         SkillMatching.service_name.like('HR-5 Lender%'))
+    ).all()
+
+    response = {
+        "service_details": []
+    }
+
+    # Collect HR-5 opposite services
+    for opp_service in opposite_services:
+        hr4_services = []
+        if 'Borrower' in opp_service.service_name:
+            hr4_services = SkillMatching.query.filter(
+                SkillMatching.service_name.like('HR-4 Lender%')
+            ).all()
+        elif 'Lender' in opp_service.service_name:
+            hr4_services = SkillMatching.query.filter(
+                SkillMatching.service_name.like('HR-4 Borrower%')
+            ).all()
+
+        for hr4_service in hr4_services:
+            skill_set_matching = SkillMatching.query.filter(
+                SkillMatching.service_name == opp_service.service_name
+            ).first()
+
+            # Collect manager details
+            managers = EmployeeDetails.query.filter(
+                EmployeeDetails.manager_id == opp_service.manager_id
+            ).all()
+            manager_names = [manager.name for manager in managers]
+
+            response["service_details"].append({
+                "hr_5_service": hr5_service.service_name,
+                "hr_5_opposite_service": opp_service.service_name,
+                "hr_4_service": hr4_service.service_name,
+                "matching_percentage": skill_set_matching.matching_percentage if skill_set_matching else "N/A",
+                "manager_name": manager_names,
+                "employee_count": len(EmployeeDetails.query.filter(
+                    EmployeeDetails.service_name == opp_service.service_name
+                ).all())
+            })
+
+    return response
+
+class ServiceDetail(Resource):
+    def get(self):
+        service_name = request.args.get('service_name')
+        if not service_name:
+            return {'error': 'Service name is required'}, 400
+        
+        service_details = get_service_details(service_name)
+        return jsonify(service_details)
+
+api.add_resource(ServiceDetail, '/api/service-detail')
+```
+
+#### 2. **Separate Endpoint for Employee Details**
+
+This endpoint will fetch employee details based on the HR-5 opposite service.
+
+```python
+class EmployeeDetail(Resource):
+    def get(self):
+        hr5_opposite_service = request.args.get('hr5_opposite_service')
+        if not hr5_opposite_service:
+            return {'error': 'HR-5 opposite service is required'}, 400
+        
+        employees = EmployeeDetails.query.filter(
+            EmployeeDetails.service_name == hr5_opposite_service
+        ).all()
+
+        employee_list = [{
+            "employee_id": emp.employee_id,
+            "name": emp.name,
+            "position": emp.position,
+            "skills": emp.skills
+        } for emp in employees]
+
+        return jsonify({"employees": employee_list})
+
+api.add_resource(EmployeeDetail, '/api/employee-detail')
+```
+
+### How It Works
+
+1. **Fetch Service Details**: When you first fetch the service details from `/api/service-detail`, it returns HR-5 details, HR-4 details, matching percentages, and the count of employees associated with each HR-5 opposite service.
+
+2. **Fetch Employee Details**: When a user clicks on a "Show Employees" button or similar trigger on the frontend, it sends a request to `/api/employee-detail` with the `hr5_opposite_service` parameter to get detailed employee information.
+
+### Example Workflow
+
+1. **Initial Request**: Fetch HR-5 service details:
+   - **Request**: `GET /api/service-detail?service_name=HR-5 Lender A`
+   - **Response**: Contains HR-5 service details, opposite services, and an employee count.
+
+2. **Employee Details Request**: Fetch employee details for an HR-5 opposite service:
+   - **Request**: `GET /api/employee-detail?hr5_opposite_service=HR-5 Borrower X`
+   - **Response**: Contains detailed employee information for the specified HR-5 opposite service.
+
+By separating these concerns into distinct endpoints, you keep your API modular and flexible, allowing for easy updates and expansion in the future.
+
+
+
+
+
 
 To simplify the JSON response and include all relevant details in a more streamlined format, here's how you can structure it:
 
