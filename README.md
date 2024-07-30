@@ -1,4 +1,134 @@
 
+
+To simplify the JSON response and include all relevant details in a more streamlined format, here's how you can structure it:
+
+### Simplified JSON Example
+
+```json
+{
+  "service_details": [
+    {
+      "hr_5_service": "HR-5 Lender A",
+      "hr_5_opposite_services": [
+        {
+          "hr_5_opposite_service": "HR-5 Borrower X",
+          "hr_4_service": "HR-4 Borrower 1",
+          "matching_percentage": "75%",
+          "manager_name": "Alice Johnson"
+        },
+        {
+          "hr_5_opposite_service": "HR-5 Borrower X",
+          "hr_4_service": "HR-4 Borrower 2",
+          "matching_percentage": "80%",
+          "manager_name": "Bob Smith"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Updated Flask Endpoint Code Snippet
+
+Here’s the revised Flask endpoint code to generate the simplified JSON:
+
+```python
+from flask import Flask, jsonify, request
+from flask_restful import Api, Resource
+from models import db, SkillMatching, EmployeeDetails  # Adjust imports as needed
+
+app = Flask(__name__)
+api = Api(app)
+
+def get_service_details(service_name):
+    # Fetch the HR-5 service
+    hr5_service = SkillMatching.query.filter(
+        SkillMatching.service_name == service_name
+    ).first()
+
+    if not hr5_service:
+        return {'error': 'Service not found'}, 404
+
+    # Determine the type of HR-5 service and find corresponding HR-5 opposite services
+    if 'Lender' in service_name:
+        opposite_services = SkillMatching.query.filter(
+            SkillMatching.service_name.like('HR-5 Borrower%')
+        ).all()
+    elif 'Borrower' in service_name:
+        opposite_services = SkillMatching.query.filter(
+            SkillMatching.service_name.like('HR-5 Lender%')
+        ).all()
+    else:
+        opposite_services = []
+
+    response = {
+        "service_details": []
+    }
+
+    # Collect HR-5 opposite services
+    for opp_service in opposite_services:
+        hr4_services = []
+        if 'Borrower' in opp_service.service_name:
+            hr4_services = SkillMatching.query.filter(
+                SkillMatching.service_name.like('HR-4 Lender%')
+            ).all()
+        elif 'Lender' in opp_service.service_name:
+            hr4_services = SkillMatching.query.filter(
+                SkillMatching.service_name.like('HR-4 Borrower%')
+            ).all()
+
+        for hr4_service in hr4_services:
+            skill_set_matching = SkillMatching.query.filter(
+                SkillMatching.service_name == opp_service.service_name
+            ).first()
+
+            # Collect manager details
+            managers = EmployeeDetails.query.filter(
+                EmployeeDetails.manager_id == opp_service.manager_id
+            ).all()
+            manager_names = [manager.name for manager in managers]
+
+            for manager_name in manager_names:
+                response["service_details"].append({
+                    "hr_5_service": hr5_service.service_name,
+                    "hr_5_opposite_service": opp_service.service_name,
+                    "hr_4_service": hr4_service.service_name,
+                    "matching_percentage": skill_set_matching.matching_percentage if skill_set_matching else "N/A",
+                    "manager_name": manager_name
+                })
+
+    return response
+
+class ServiceDetail(Resource):
+    def get(self):
+        service_name = request.args.get('service_name')
+        if not service_name:
+            return {'error': 'Service name is required'}, 400
+        
+        service_details = get_service_details(service_name)
+        return jsonify(service_details)
+
+api.add_resource(ServiceDetail, '/api/service-detail')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+### Explanation
+
+1. **JSON Structure**: The JSON response now contains a list of `service_details`, each entry representing a combination of an HR-5 service, its opposite HR-5 service, the corresponding HR-4 service, the matching percentage, and the manager's name.
+
+2. **Single Level Data**: Each entry in the `service_details` list has all the relevant information compacted into a single object.
+
+3. **Flask Endpoint**: The endpoint fetches the HR-5 service details, identifies opposite services, retrieves HR-4 services, and includes matching percentages and manager names in a simplified format.
+
+This approach keeps the JSON response straightforward and easy to interpret while still including all necessary details.
+
+
+
+
+
+
 Understood. For the Request History endpoint, the `start_date` and `end_date` should be formatted as "Month Year," while `status_updated_on` should be formatted as "DD-MM-YYYY." Here’s how you can adjust the JSON output and the respective Flask endpoint code snippet:
 
 ### Example JSON Output for Request History
