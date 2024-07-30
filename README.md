@@ -1,4 +1,126 @@
 
+Understood. For the Request History endpoint, the `start_date` and `end_date` should be formatted as "Month Year," while `status_updated_on` should be formatted as "DD-MM-YYYY." Here’s how you can adjust the JSON output and the respective Flask endpoint code snippet:
+
+### Example JSON Output for Request History
+
+```json
+{
+  "request_history": [
+    {
+      "id": 1,
+      "service_name": "HR-5 Lender",
+      "status": "CLOSED",
+      "start_date": "March 2024",
+      "end_date": "March 2024",
+      "resource_count": 5,
+      "status_updated_on": "15-03-2024",
+      "remarks": "Completed successfully"
+    },
+    {
+      "id": 2,
+      "service_name": "HR-5 Borrower",
+      "status": "PARTIALLY FULFILLED",
+      "start_date": "January 2024",
+      "end_date": "February 2024",
+      "resource_count": 3,
+      "status_updated_on": "20-01-2024",
+      "remarks": "Partially fulfilled due to resource constraints"
+    },
+    {
+      "id": 3,
+      "service_name": "HR-5 Lender",
+      "status": "IN PROGRESS",
+      "start_date": "June 2024",
+      "end_date": "July 2024",
+      "resource_count": 8,
+      "status_updated_on": "15-06-2024",
+      "remarks": "In progress, awaiting further resources"
+    },
+    {
+      "id": 4,
+      "service_name": "HR-5 Borrower",
+      "status": "CLOSED",
+      "start_date": "October 2023",
+      "end_date": "November 2023",
+      "resource_count": 4,
+      "status_updated_on": "15-10-2023",
+      "remarks": "Closed with some pending issues"
+    }
+  ]
+}
+```
+
+### Flask Endpoint Code Snippet
+
+Here’s how you can implement this in Flask using Flask-RESTful. This code assumes you have already set up SQLAlchemy and Flask-RESTful.
+
+```python
+from flask import Flask, jsonify
+from flask_restful import Api, Resource
+from datetime import datetime
+from models import db, Demand, Supply  # Assuming you have Demand and Supply models
+
+app = Flask(__name__)
+api = Api(app)
+
+def format_date_for_display(date, date_format):
+    return date.strftime(date_format) if date else None
+
+def get_request_history():
+    # Fetch recent requests from the database
+    # Example query for illustration; adjust as needed
+    demands = Demand.query.filter(Demand.status.in_(['CLOSED', 'PARTIALLY FULFILLED', 'IN PROGRESS']))\
+                           .order_by(Demand.status_updated_on.desc())\
+                           .limit(10).all()
+    
+    supplies = Supply.query.filter(Supply.status.in_(['CLOSED', 'PARTIALLY FULFILLED', 'IN PROGRESS']))\
+                            .order_by(Supply.status_updated_on.desc())\
+                            .limit(10).all()
+    
+    # Combine and sort the results
+    requests = demands + supplies
+    requests.sort(key=lambda x: x.status_updated_on, reverse=True)
+    
+    # Format the response data
+    response_data = []
+    for req in requests:
+        formatted_data = {
+            "id": req.id,
+            "service_name": req.service_name,
+            "status": req.status,
+            "start_date": format_date_for_display(req.start_date, "%B %Y"),
+            "end_date": format_date_for_display(req.end_date, "%B %Y"),
+            "resource_count": req.resource_count,
+            "status_updated_on": format_date_for_display(req.status_updated_on, "%d-%m-%Y"),
+            "remarks": req.remarks
+        }
+        response_data.append(formatted_data)
+    
+    return response_data
+
+class RequestHistory(Resource):
+    def get(self):
+        request_history = get_request_history()
+        return jsonify({"request_history": request_history})
+
+api.add_resource(RequestHistory, '/api/request-history')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+### Explanation:
+- **`format_date_for_display`**: A helper function to format dates as per the required format.
+- **`get_request_history`**: Fetches the recent requests, combines and sorts them, and formats the dates.
+- **`RequestHistory` class**: Defines the `/api/request-history` endpoint, which returns the formatted data.
+
+You can adjust the SQLAlchemy queries and model attributes as per your exact setup. This code assumes that the `Demand` and `Supply` models include the necessary fields.
+
+
+
+
+
+
 Yes, it is possible to further optimize the code to reduce redundancy and improve performance. Here are some ways to optimize the code further:
 
 1. **Combine Queries**: Fetch and process data in fewer queries to minimize database hits.
