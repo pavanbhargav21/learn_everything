@@ -1,4 +1,154 @@
 
+Understood. If HR-5 Borrower, HR-5 Lender, HR-4 Borrower, and HR-4 Lender are columns in the `SkillMatching` table rather than separate tables, you'll need to adjust your queries accordingly. Here’s how you can revise the code:
+
+### Revised Implementation
+
+#### 1. **Primary Endpoint for HR-5 Details**
+
+This endpoint fetches HR-5 details, related HR-4 details, and the matching percentage, based on the columns in the `SkillMatching` table.
+
+```python
+from flask import Flask, jsonify, request
+from flask_restful import Api, Resource
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+from models import SkillMatching, EmployeeDetails
+
+app = Flask(__name__)
+api = Api(app)
+
+# Database setup
+engine = create_engine('your_database_url')
+Session = sessionmaker(bind=engine)
+
+def get_service_details(service_name):
+    with Session() as session:
+        # Query for HR-5 details
+        hr5_service = session.query(SkillMatching).filter(
+            (SkillMatching.hr5_lender == service_name) | 
+            (SkillMatching.hr5_borrower == service_name)
+        ).first()
+        
+        if not hr5_service:
+            return {'message': 'Service not found'}, 404
+        
+        response = {
+            'HR5_service_name': service_name,
+            'HR4_details': []
+        }
+        
+        if hr5_service.hr5_lender == service_name:
+            # Find HR-5 Borrowers and their matching HR-4 Borrowers
+            opposite_services = session.query(SkillMatching).filter(
+                SkillMatching.hr5_borrower.isnot(None)
+            ).all()
+            
+            for service in opposite_services:
+                if service.hr5_lender == service_name:
+                    continue
+                
+                hr4_borrower = session.query(SkillMatching).filter(
+                    SkillMatching.hr4_borrower == service.hr5_borrower
+                ).first()
+                
+                matching_percentage = service.matching_percentage
+                
+                response['HR4_details'].append({
+                    'HR5_opposite_service': service.hr5_borrower,
+                    'HR4_name': hr4_borrower.hr4_borrower if hr4_borrower else "N/A",
+                    'matching_percentage': matching_percentage,
+                    'manager_name': service.manager_name
+                })
+        
+        elif hr5_service.hr5_borrower == service_name:
+            # Find HR-5 Lenders and their matching HR-4 Lenders
+            opposite_services = session.query(SkillMatching).filter(
+                SkillMatching.hr5_lender.isnot(None)
+            ).all()
+            
+            for service in opposite_services:
+                if service.hr5_borrower == service_name:
+                    continue
+                
+                hr4_lender = session.query(SkillMatching).filter(
+                    SkillMatching.hr4_lender == service.hr5_lender
+                ).first()
+                
+                matching_percentage = service.matching_percentage
+                
+                response['HR4_details'].append({
+                    'HR5_opposite_service': service.hr5_lender,
+                    'HR4_name': hr4_lender.hr4_lender if hr4_lender else "N/A",
+                    'matching_percentage': matching_percentage,
+                    'manager_name': service.manager_name
+                })
+
+    return response
+
+class ServiceDetail(Resource):
+    def get(self):
+        service_name = request.args.get('service_name')
+        if not service_name:
+            return {'message': 'Service name is required'}, 400
+        
+        service_details = get_service_details(service_name)
+        return jsonify(service_details)
+
+api.add_resource(ServiceDetail, '/api/service-detail')
+```
+
+#### 2. **Endpoint for Employee Details**
+
+This endpoint provides employee details associated with an HR-5 opposite service.
+
+```python
+class EmployeeDetail(Resource):
+    def get(self):
+        hr5_opposite_service = request.args.get('hr5_opposite_service')
+        if not hr5_opposite_service:
+            return {'message': 'HR-5 opposite service is required'}, 400
+        
+        with Session() as session:
+            employees = session.query(EmployeeDetails).filter_by(service_name=hr5_opposite_service).all()
+
+            employee_list = [{
+                "employee_id": emp.employee_id,
+                "name": emp.name,
+                "position": emp.position,
+                "skills": emp.skills
+            } for emp in employees]
+
+            return jsonify({"employees": employee_list})
+
+api.add_resource(EmployeeDetail, '/api/employee-detail')
+```
+
+### How It Works
+
+1. **Fetch Service Details**: Query the `SkillMatching` table to get HR-5 details, HR-4 details, and matching percentages based on whether the HR-5 service is a lender or borrower.
+
+2. **Fetch Employee Details**: Use a separate endpoint to retrieve detailed employee information for the HR-5 opposite service.
+
+### Example Workflow
+
+1. **Initial Request**:
+   - **Request**: `GET /api/service-detail?service_name=HR-5 Lender A`
+   - **Response**: Returns HR-5 service details, including HR-4 details and matching percentages.
+
+2. **Fetch Employee Details**:
+   - **Request**: `GET /api/employee-detail?hr5_opposite_service=HR-5 Borrower X`
+   - **Response**: Provides detailed employee information for the specified HR-5 opposite service.
+
+By keeping the functionality modular and using separate endpoints, you maintain a flexible and scalable design. This allows for easy updates and management of complex data relationships.
+
+
+
+
+
+
+
+
+
 <template>
   <v-container>
     <v-card flat>
