@@ -1,4 +1,147 @@
 
+Yes, it is possible to further optimize the code to reduce redundancy and improve performance. Here are some ways to optimize the code further:
+
+1. **Combine Queries**: Fetch and process data in fewer queries to minimize database hits.
+2. **Use Dictionary Lookup**: Store HR_4 names in a dictionary for faster access instead of querying multiple times.
+
+Here's a more optimized version of the code:
+
+### Optimized Code
+
+#### 1. Dashboard Endpoint
+
+```python
+from flask import Blueprint, jsonify
+from flask_restful import Api, Resource
+from app.models import Demand, Supply, SkillMatching
+from app import session_scope
+
+bp_dashboard = Blueprint('dashboard', __name__, url_prefix='/api/dashboard')
+api_dashboard = Api(bp_dashboard)
+
+class DashboardResource(Resource):
+    def get(self):
+        with session_scope() as session:
+            # Fetch the most recent 5 open supply and demand requests
+            recent_open_demands = session.query(Demand).filter(Demand.status == 'OPEN').order_by(Demand.start_date.desc()).limit(5).all()
+            recent_open_supplies = session.query(Supply).filter(Supply.status == 'OPEN').order_by(Supply.start_date.desc()).limit(5).all()
+
+            # Fetch all SkillMatching entries in one query
+            skill_matches = session.query(SkillMatching).all()
+
+            # Build a lookup dictionary for HR_4 names
+            hr_4_lookup = {}
+            for match in skill_matches:
+                if match.hr_5_lender:
+                    hr_4_lookup[match.hr_5_lender] = match.hr_4_lender
+                if match.hr_5_borrower:
+                    hr_4_lookup[match.hr_5_borrower] = match.hr_4_borrower
+
+            def format_date(date):
+                return date.strftime('%B %Y') if date else None
+
+            def to_dict(instance):
+                data = {c.name: getattr(instance, c.name) for c in instance.__table__.columns}
+                if 'start_date' in data:
+                    data['start_date'] = format_date(data['start_date'])
+                if 'end_date' in data:
+                    data['end_date'] = format_date(data['end_date'])
+                return data
+
+            def enrich_data(data_list):
+                for data in data_list:
+                    service_name = data.get('service_name')
+                    data['hr_4_name'] = hr_4_lookup.get(service_name, None)
+                return [to_dict(data) for data in data_list]
+
+            result = {
+                'recent_open_demands': enrich_data(recent_open_demands),
+                'recent_open_supplies': enrich_data(recent_open_supplies)
+            }
+
+        return jsonify(result)
+
+api_dashboard.add_resource(DashboardResource, '/')
+```
+
+#### 2. MySpace Endpoint
+
+```python
+from flask import Blueprint, jsonify
+from flask_restful import Api, Resource
+from app.models import Demand, Supply, SkillMatching
+from app import session_scope
+
+bp_myspace = Blueprint('myspace', __name__, url_prefix='/api/myspace')
+api_myspace = Api(bp_myspace)
+
+class MySpaceResource(Resource):
+    def get(self, manager_id):
+        with session_scope() as session:
+            # Fetch all open demands and supplies for the given manager_id
+            open_demands = session.query(Demand).filter(
+                Demand.creator == manager_id,
+                Demand.status == 'OPEN'
+            ).all()
+            
+            open_supplies = session.query(Supply).filter(
+                Supply.creator == manager_id,
+                Supply.status == 'OPEN'
+            ).all()
+
+            # Fetch all SkillMatching entries in one query
+            skill_matches = session.query(SkillMatching).all()
+
+            # Build a lookup dictionary for HR_4 names
+            hr_4_lookup = {}
+            for match in skill_matches:
+                if match.hr_5_lender:
+                    hr_4_lookup[match.hr_5_lender] = match.hr_4_lender
+                if match.hr_5_borrower:
+                    hr_4_lookup[match.hr_5_borrower] = match.hr_4_borrower
+
+            def format_date(date):
+                return date.strftime('%B %Y') if date else None
+
+            def to_dict(instance):
+                data = {c.name: getattr(instance, c.name) for c in instance.__table__.columns}
+                if 'start_date' in data:
+                    data['start_date'] = format_date(data['start_date'])
+                if 'end_date' in data:
+                    data['end_date'] = format_date(data['end_date'])
+                return data
+
+            def enrich_data(data_list):
+                for data in data_list:
+                    service_name = data.get('service_name')
+                    data['hr_4_name'] = hr_4_lookup.get(service_name, None)
+                return [to_dict(data) for data in data_list]
+
+            result = {
+                'open_demands': enrich_data(open_demands),
+                'open_supplies': enrich_data(open_supplies)
+            }
+
+        return jsonify(result)
+
+api_myspace.add_resource(MySpaceResource, '/<int:manager_id>')
+```
+
+### Summary of Optimizations
+- **Single Query for SkillMatching**: Fetch all SkillMatching entries in a single query and use a dictionary for HR_4 lookups.
+- **Unified Enrichment**: Use a dictionary to simplify HR_4 name retrieval instead of querying for each service name.
+- **Simplified Formatting**: Consistent date formatting and conversion to dictionaries are handled within helper functions.
+
+This approach minimizes database queries and uses in-memory data structures to quickly access required information, improving efficiency and reducing complexity.
+
+
+
+
+
+
+
+
+
 
 Certainly! Here’s how you can set up the Flask-RESTful resources for `MyDashboard`, `RequestHistory`, and `MySpace` endpoints, including the date formatting logic where applicable.
 
