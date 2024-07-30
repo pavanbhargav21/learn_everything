@@ -1,3 +1,154 @@
+
+
+Certainly! Here’s how you can set up the Flask-RESTful resources for `MyDashboard`, `RequestHistory`, and `MySpace` endpoints, including the date formatting logic where applicable.
+
+### Flask-RESTful Resource Setup
+
+#### 1. Dashboard Endpoint
+
+This endpoint will return the most recent open supply and demand requests, with dates formatted as `Month Year`.
+
+```python
+from flask import Blueprint, jsonify
+from flask_restful import Api, Resource
+from datetime import datetime
+from app.models import Demand, Supply
+from app import Session, session_scope
+
+bp_dashboard = Blueprint('dashboard', __name__, url_prefix='/api/dashboard')
+api_dashboard = Api(bp_dashboard)
+
+class DashboardResource(Resource):
+    def get(self):
+        with session_scope() as session:
+            # Fetch the most recent 5 open supply and demand requests
+            recent_open_demands = session.query(Demand).filter(Demand.status == 'OPEN').order_by(Demand.created_date.desc()).limit(5).all()
+            recent_open_supplies = session.query(Supply).filter(Supply.status == 'OPEN').order_by(Supply.created_date.desc()).limit(5).all()
+
+        def format_date(date):
+            return date.strftime('%B %Y') if date else None
+        
+        def to_dict(instance):
+            data = {c.name: getattr(instance, c.name) for c in instance.__table__.columns}
+            if 'start_date' in data:
+                data['start_date'] = format_date(data['start_date'])
+            if 'end_date' in data:
+                data['end_date'] = format_date(data['end_date'])
+            return data
+
+        result = {
+            'recent_open_demands': [to_dict(demand) for demand in recent_open_demands],
+            'recent_open_supplies': [to_dict(supply) for supply in recent_open_supplies]
+        }
+
+        return jsonify(result)
+
+api_dashboard.add_resource(DashboardResource, '/')
+```
+
+#### 2. MySpace Endpoint
+
+This endpoint will return all open supply and demand requests for a specific manager, with dates formatted as `Month Year`.
+
+```python
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from datetime import datetime
+from app.models import Demand, Supply
+from app import Session, session_scope
+
+bp_myspace = Blueprint('myspace', __name__, url_prefix='/api/myspace')
+api_myspace = Api(bp_myspace)
+
+class MySpaceResource(Resource):
+    def get(self, manager_id):
+        with session_scope() as session:
+            # Fetch all open demands and supplies for the given manager_id
+            open_demands = session.query(Demand).filter(
+                Demand.creator == manager_id,
+                Demand.status == 'OPEN'
+            ).all()
+            
+            open_supplies = session.query(Supply).filter(
+                Supply.creator == manager_id,
+                Supply.status == 'OPEN'
+            ).all()
+
+        def format_date(date):
+            return date.strftime('%B %Y') if date else None
+        
+        def to_dict(instance):
+            data = {c.name: getattr(instance, c.name) for c in instance.__table__.columns}
+            if 'start_date' in data:
+                data['start_date'] = format_date(data['start_date'])
+            if 'end_date' in data:
+                data['end_date'] = format_date(data['end_date'])
+            return data
+
+        result = {
+            'open_demands': [to_dict(demand) for demand in open_demands],
+            'open_supplies': [to_dict(supply) for supply in open_supplies]
+        }
+
+        return jsonify(result)
+
+api_myspace.add_resource(MySpaceResource, '/<int:manager_id>')
+```
+
+#### 3. Request History Endpoint
+
+This endpoint will return all demands and supplies with the full date format.
+
+```python
+from flask import Blueprint, jsonify
+from flask_restful import Api, Resource
+from app.models import Demand, Supply
+from app import Session, session_scope
+
+bp_request_history = Blueprint('request_history', __name__, url_prefix='/api/request-history')
+api_request_history = Api(bp_request_history)
+
+class RequestHistoryResource(Resource):
+    def get(self):
+        with session_scope() as session:
+            # Fetch all demands and supplies
+            demands = session.query(Demand).all()
+            supplies = session.query(Supply).all()
+
+        def to_dict(instance):
+            return {c.name: getattr(instance, c.name) for c in instance.__table__.columns}
+
+        result = {
+            'demands': [to_dict(demand) for demand in demands],
+            'supplies': [to_dict(supply) for supply in supplies]
+        }
+
+        return jsonify(result)
+
+api_request_history.add_resource(RequestHistoryResource, '/')
+```
+
+### Summary
+
+1. **Dashboard Endpoint (`/api/dashboard/`)**: Returns the most recent 5 open supply and demand requests, with dates formatted as `Month Year`.
+2. **MySpace Endpoint (`/api/myspace/<int:manager_id>`)**: Returns all open supply and demand requests for a specific manager, with dates formatted as `Month Year`.
+3. **Request History Endpoint (`/api/request-history/`)**: Returns all demands and supplies with full date formatting.
+
+Make sure to import these blueprints and register them in your Flask app's main setup. This structure should address your requirements for the different screens in your front-end application.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <template>
   <v-card class="main-card">
     <!-- Toolbar -->
