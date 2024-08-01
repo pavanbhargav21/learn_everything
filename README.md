@@ -1,4 +1,54 @@
 
+def get_request_history():
+    # Fetch recent requests from the database
+    with session_scope() as session:
+        demands = session.query(Demand).filter(Demand.status.in_(['CLOSED', 'PARTIALLY FULFILLED', 'INCOMPLETE']))\
+                            .order_by(Demand.status_updated_date.desc())\
+                            .limit(10).all()
+        
+        supplies = session.query(Supply).filter(Supply.status.in_(['CLOSED', 'PARTIALLY FULFILLED', 'INCOMPLETE']))\
+                                .order_by(Supply.status_updated_date.desc())\
+                                .limit(10).all()
+        
+        # Combine and add type information
+        requests = []
+        for demand in demands:
+            requests.append({
+                "type": "Demand",
+                "id": demand.id,
+                "service_name": demand.service_level,
+                "status": demand.status,
+                "start_date": format_date_for_display(demand.start_date, "%B %Y"),
+                "end_date": format_date_for_display(demand.end_date, "%B %Y"),
+                "resource_count": demand.resources,
+                "status_updated_date": format_date_for_display(demand.status_updated_date, "%d-%m-%Y"),
+                "remarks": demand.remarks
+            })
+        
+        for supply in supplies:
+            requests.append({
+                "type": "Supply",
+                "id": supply.id,
+                "service_name": supply.service_level,
+                "status": supply.status,
+                "start_date": format_date_for_display(supply.start_date, "%B %Y"),
+                "end_date": format_date_for_display(supply.end_date, "%B %Y"),
+                "resource_count": supply.resources,
+                "status_updated_date": format_date_for_display(supply.status_updated_date, "%d-%m-%Y"),
+                "remarks": supply.remarks
+            })
+        
+        # Sort the results
+        requests.sort(key=lambda x: x['status_updated_date'], reverse=True)
+    
+    return requests
+
+
+
+
+
+
+
 Understood. If HR-5 Borrower, HR-5 Lender, HR-4 Borrower, and HR-4 Lender are columns in the `SkillMatching` table rather than separate tables, you'll need to adjust your queries accordingly. Here’s how you can revise the code:
 
 ### Revised Implementation
