@@ -1,3 +1,39 @@
+def get_service_details(service_name):
+    with Session() as session:
+        # Fetch all related records where service_name is either a lender or a borrower
+        services = session.query(SkillMatching).filter(
+            or_(
+                SkillMatching.hrl_5_lender == service_name,
+                SkillMatching.hrl_5_borrower == service_name
+            )
+        ).all()
+        
+        if not services:
+            return {'message': 'Service not found'}, 404
+
+        # Extract all HR5 names related to the given service_name
+        response = {'HR5_service_name': service_name, 'HR4_details': []}
+        
+        for service in services:
+            if service.hrl_5_lender == service_name:
+                opposite_service = service.hrl_5_borrower
+                HR4_name = service.hrl_4_borrower
+                HR3_name = service.hrl_3_borrower
+            else:
+                opposite_service = service.hrl_5_lender
+                HR4_name = service.hrl_4_lender
+                HR3_name = service.hrl_3_lender
+            
+            response['HR4_details'].append({
+                'HR5_opposite_service': opposite_service,
+                'HR4_name': HR4_name if HR4_name else "N/A",
+                'HR3_name': HR3_name if HR3_name else "N/A",
+                'matching_percentage': service.skill_match
+            })
+        
+    return response
+
+
 
 
 Understood. We need to address two main issues:
