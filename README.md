@@ -1,4 +1,67 @@
 
+INSERT INTO SKILL_MATCHING (
+    "HRL_3_LENDER", 
+    "HRL_4_LENDER", 
+    "HRL_5_LENDER", 
+    "HRL_3_BORROWER", 
+    "HRL_4_BORROWER", 
+    "HRL_5_BORROWER", 
+    "SKILL_MATCH"
+) VALUES
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cards and Loans', 'Loan Account Onboarding', '43%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cards and Loans', 'Acquiring', '42%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Dispute Management', '41%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cash', 'Remote Self Service Terminal Cash Replenishment', '40%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Fraud Claims and Recovery', '37%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Import Processing', '33%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Export Processing', '33%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cards and Loans', 'Third Party Vendor Mgmt/ Proc', '31%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cards and Loans', 'Acquiring', '73%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Fraud Claims and Recovery', '64%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Dispute Management', '47%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cards and Loans', 'Loan Account Onboarding', '47%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Import Processing', '45%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Export Processing', '45%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Issuance', '45%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cards and Loans', 'Loan Account Servicing', '45%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cards and Loans', 'Third Party Vendor Mgmt/ Proc', '42%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Account Onboarding', '40%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Account Servicing and Closing', '40%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cash', 'Remote Self Service Terminal Cash Replenishment', '34%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cards and Loans', 'Cards & Loans Glbl Mgmt & Sup', '33%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'WPB Operations', 'Cash', 'Vault Cash', '30%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Channel Administration - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Trade and Receivables Finance', '21%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cards and Loans', 'Acquiring', '70%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Fraud Claims and Recovery', '62%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cards and Loans', 'Loan Account Onboarding', '60%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cards and Loans', 'Third Party Vendor Mgmt/ Proc', '46%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Dispute Management', '46%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Issuance', '38%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cards and Loans', 'Loan Account Servicing', '38%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Account Onboarding', '35%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Account Servicing and Closing', '34%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cash', 'Vault Cash', '33%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Import Processing', '30%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Export Processing', '30%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cash', 'Remote Self Service Terminal Cash Replenishment', '29%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'WPB Operations', 'Cards and Loans', 'Cards & Loans Glbl Mgmt & Sup', '29%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Client Amendments - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Trade and Receivables Finance', '18%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Closures - Wholesale', 'WPB Operations', 'Cards and Loans', 'Acquiring', '87%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Closures - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Fraud Claims and Recovery', '69%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Closures - Wholesale', 'WPB Operations', 'Cards and Loans', 'Loan Account Onboarding', '60%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Closures - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Dispute Management', '51%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Closures - Wholesale', 'WPB Operations', 'Cards and Loans', 'Loan Account Servicing', '47%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Closures - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Import Processing', '44%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Closures - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Export Processing', '44%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Closures - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Account Onboarding', '43%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Closures - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Issuance', '43%');
+
+
+
+
+
+
+
 from flask import Blueprint, jsonify
 from flask_restful import Api, Resource
 from app import session_scope
