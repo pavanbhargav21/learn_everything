@@ -1,3 +1,82 @@
+from flask import Blueprint, jsonify
+from flask_restful import Api, Resource
+from app import session_scope
+from app.models import SkillMatching
+
+bp = Blueprint('servicelevel', __name__, url_prefix='/api/servicelevel')
+api = Api(bp)
+
+class ServiceLevel(Resource):
+    def get(self):
+        with session_scope() as session:
+            # Query SkillMatching table for all required data in a single call
+            results = session.query(
+                SkillMatching.hrl_4_lender,
+                SkillMatching.hrl_5_lender,
+                SkillMatching.hrl_4_borrower,
+                SkillMatching.hrl_5_borrower
+            ).distinct().all()
+
+            # Initialize dictionaries to store BF Level 4 to BF Level 5 mappings
+            bf_level_4_to_5_lenders = {}
+            bf_level_4_to_5_borrowers = {}
+
+            # Process query results
+            for row in results:
+                hrl_4_lender, hrl_5_lender, hrl_4_borrower, hrl_5_borrower = row
+
+                if hrl_4_lender:
+                    if hrl_4_lender not in bf_level_4_to_5_lenders:
+                        bf_level_4_to_5_lenders[hrl_4_lender] = []
+                    if hrl_5_lender:
+                        bf_level_4_to_5_lenders[hrl_4_lender].append(hrl_5_lender)
+
+                if hrl_4_borrower:
+                    if hrl_4_borrower not in bf_level_4_to_5_borrowers:
+                        bf_level_4_to_5_borrowers[hrl_4_borrower] = []
+                    if hrl_5_borrower:
+                        bf_level_4_to_5_borrowers[hrl_4_borrower].append(hrl_5_borrower)
+
+            # Format the data for the response
+            data = []
+            for bf_level_4, bf_level_5_list in bf_level_4_to_5_lenders.items():
+                data.append({
+                    "BF_Level_4": bf_level_4,
+                    "BF_Level_5": bf_level_5_list
+                })
+            for bf_level_4, bf_level_5_list in bf_level_4_to_5_borrowers.items():
+                data.append({
+                    "BF_Level_4": bf_level_4,
+                    "BF_Level_5": bf_level_5_list
+                })
+
+            return jsonify(data)
+
+api.add_resource(ServiceLevel, '/')
+
+
+
+
+[
+  {
+    "BF_Level_4": "HR Level 4 Name",
+    "BF_Level_5": ["HR Level 5 Name 1", "HR Level 5 Name 2"]
+  },
+  {
+    "BF_Level_4": "HR Level 4 Name",
+    "BF_Level_5": ["HR Level 5 Name 3", "HR Level 5 Name 4"]
+  }
+]
+
+
+
+
+
+
+
+
+
+
 
 def get_request_history():
     # Fetch recent requests from the database
