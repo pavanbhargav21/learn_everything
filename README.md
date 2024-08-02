@@ -79,6 +79,85 @@ api.add_resource(ServiceLevel, '/')
 
 
 
+
+INSERT INTO SKILL_MATCHING (
+    "HRL_3_LENDER", 
+    "HRL_4_LENDER", 
+    "HRL_5_LENDER", 
+    "HRL_3_BORROWER", 
+    "HRL_4_BORROWER", 
+    "HRL_5_BORROWER", 
+    "SKILL_MATCH"
+) VALUES
+('Wholesale Operations', 'Credit Services', 'Financial Analysis', 'WPB Operations', 'Cards and Loans', 'Loan Account Onboarding', '28%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cards and Loans', 'Card Dispute Management', '58%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cards and Loans', 'Loan Account Servicing', '45%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cards and Loans', 'Card Account Onboarding', '44%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cards and Loans', 'Card Issuance', '41%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cards and Loans', 'Card Account Servicing and Closing', '41%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'Wholesale Operations', 'Trade and Receivables Finance', 'Trade and Receivables Finance', '41%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cash', 'Remote Self Service Terminal Cash Replenishment', '40%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cards and Loans', 'Cards & Loans Glbl Mgmt & Sup', '40%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cards and Loans', 'Card Fraud Claims and Recovery', '37%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cash', 'Vault Cash', '36%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cards and Loans', 'Acquiring', '35%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'Wholesale Operations', 'Trade and Receivables Finance', 'Import Processing', '35%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'Wholesale Operations', 'Trade and Receivables Finance', 'Export Processing', '35%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cards and Loans', 'Third Party Vendor Mgmt/ Proc', '32%'),
+('Wholesale Operations', 'Credit Services', 'Lending Documentation Processing', 'WPB Operations', 'Cards and Loans', 'Loan Account Onboarding', '30%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cards and Loans', 'Loan Account Servicing', '46%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cards and Loans', 'Card Issuance', '42%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'Wholesale Operations', 'Trade and Receivables Finance', 'Trade and Receivables Finance', '41%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cards and Loans', 'Cards & Loans Glbl Mgmt & Sup', '39%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'Wholesale Operations', 'Trade and Receivables Finance', 'Import Processing', '39%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'Wholesale Operations', 'Trade and Receivables Finance', 'Export Processing', '39%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cards and Loans', 'Card Account Servicing and Closing', '38%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cards and Loans', 'Card Dispute Management', '38%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cards and Loans', 'Card Account Onboarding', '35%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cash', 'Remote Self Service Terminal Cash Replenishment', '34%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cards and Loans', 'Card Fraud Claims and Recovery', '34%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cash', 'Vault Cash', '33%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cards and Loans', 'Acquiring', '32%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cards and Loans', 'Loan Account Onboarding', '28%'),
+('Wholesale Operations', 'Credit Services', 'Limits Management', 'WPB Operations', 'Cards and Loans', 'Third Party Vendor Mgmt/ Proc', '12%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Account Onboarding', '65%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cards and Loans', 'Cards & Loans Glbl Mgmt & Sup', '65%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cards and Loans', 'Loan Account Servicing', '62%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Issuance', '60%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Account Servicing and Closing', '58%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cash', 'Remote Self Service Terminal Cash Replenishment', '51%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Dispute Management', '49%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cash', 'Vault Cash', '47%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cards and Loans', 'Loan Account Onboarding', '45%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cards and Loans', 'Acquiring', '44%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Trade and Receivables Finance', '40%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Fraud Claims and Recovery', '39%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'WPB Operations', 'Cards and Loans', 'Third Party Vendor Mgmt/ Proc', '32%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Import Processing', '22%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Maintenance - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Export Processing', '22%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cards and Loans', 'Cards & Loans Glbl Mgmt & Sup', '63%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Account Onboarding', '56%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Account Servicing and Closing', '53%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cards and Loans', 'Loan Account Servicing', '52%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cards and Loans', 'Card Issuance', '50%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'Wholesale Operations', 'Trade and Receivables Finance', 'Trade and Receivables Finance', '47%'),
+('Wholesale Operations', 'Wholesale Client & Account Servicing', 'Account Opening - Wholesale', 'WPB Operations', 'Cash', 'Vault Cash', '43%'),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Here's the SQL `INSERT` statement with the values you provided:
 
 ```sql
