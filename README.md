@@ -1,3 +1,27 @@
+INSERT INTO SKILL_MATCHING (
+    "HRL_3_LENDER", 
+    "HRL_4_LENDER", 
+    "HRL_5_LENDER", 
+    "HRL_3_BORROWER", 
+    "HRL_4_BORROWER", 
+    "HRL_5_BORROWER", 
+    "SKILL_MATCH", 
+    "is_active"
+) VALUES (
+    'HR Level 3 Lender Name', 
+    'HR Level 4 Lender Name', 
+    'HR Level 5 Lender Name', 
+    'HR Level 3 Borrower Name', 
+    'HR Level 4 Borrower Name', 
+    'HR Level 5 Borrower Name', 
+    95.00,  -- skill_match value
+    TRUE    -- is_active value
+);
+
+
+
+
+
 from flask import Blueprint, jsonify
 from flask_restful import Api, Resource
 from app import session_scope
