@@ -1,3 +1,229 @@
+If you anticipate connecting to different databases in the future and want to maintain separate connections and models, you can structure your application to support multiple database connections. Here’s how you can design it:
+
+### Updated Project Structure
+
+1. **`config/`**: Contains configuration for different databases.
+2. **`app/__init__.py`**: Initializes the app and sets up database connections dynamically.
+3. **`app/models/`**: Contains models for different databases.
+4. **`app/routes/`**: Contains routes for the application.
+5. **`app/database/`**: Manages database connections and sessions.
+
+### Detailed Code Structure
+
+#### `.env` File
+Store connection details for different databases.
+
+```env
+# Default Database configurations
+DEFAULT_DB_TYPE=sql_server
+DEFAULT_DB_SERVER=pre.database.windows.net
+DEFAULT_DB_DATABASE=predb
+DEFAULT_DB_USERNAME=my_db_username
+DEFAULT_DB_PASSWORD=my_db_password
+DEFAULT_DB_DRIVER={ODBC Driver 18 for SQL Server}
+DEFAULT_DB_USE_AD_AUTH=False  # Set to True for Active Directory MSI
+
+# Another Database configurations (for example, PostgreSQL)
+SECONDARY_DB_TYPE=postgresql
+SECONDARY_DB_SERVER=secondary.database.server
+SECONDARY_DB_DATABASE=secondary_db
+SECONDARY_DB_USERNAME=secondary_db_user
+SECONDARY_DB_PASSWORD=secondary_db_password
+SECONDARY_DB_DRIVER=postgresql
+SECONDARY_DB_USE_AD_AUTH=False
+```
+
+#### `app/database/connection_manager.py`
+Manages connections to different databases based on the configuration.
+
+```python
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.ext.declarative import declarative_base
+import os
+import urllib
+
+Base = declarative_base()
+
+def get_connection_string(db_name):
+    db_type = os.getenv(f'{db_name}_DB_TYPE')
+    server = os.getenv(f'{db_name}_DB_SERVER')
+    database = os.getenv(f'{db_name}_DB_DATABASE')
+    username = os.getenv(f'{db_name}_DB_USERNAME', '')
+    password = os.getenv(f'{db_name}_DB_PASSWORD', '')
+    driver = os.getenv(f'{db_name}_DB_DRIVER')
+    use_ad_auth = os.getenv(f'{db_name}_DB_USE_AD_AUTH', 'False') == 'True'
+    
+    if use_ad_auth:
+        params = urllib.parse.quote_plus(
+            f'Driver={driver};'
+            f'Server=tcp:{server},1433;'
+            f'Database={database};'
+            f'TrustServerCertificate=no;'
+            f'Connection Timeout=30;'
+            f'Authentication=ActiveDirectoryMsi'
+        )
+    else:
+        if db_type == 'postgresql':
+            params = f'postgresql://{username}:{password}@{server}/{database}'
+        else:
+            params = urllib.parse.quote_plus(
+                f'Driver={driver};'
+                f'Server=tcp:{server},1433;'
+                f'Database={database};'
+                f'TrustServerCertificate=no;'
+                f'Connection Timeout=30;'
+                f'Uid={username};'
+                f'Pwd={password}'
+            )
+    
+    connection_string = f'{db_type}+pyodbc:///?odbc_connect={params}'
+    return connection_string
+
+def create_engine_session(db_name):
+    engine = create_engine(get_connection_string(db_name), fast_executemany=True, pool_size=10, max_overflow=20)
+    Session = scoped_session(sessionmaker(bind=engine))
+    Base.metadata.create_all(engine)
+    return engine, Session
+
+def get_session(db_name):
+    _, session = create_engine_session(db_name)
+    return session
+
+@contextmanager
+def session_scope(db_name):
+    session = get_session(db_name)
+    try:
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        session.remove()
+```
+
+#### `app/__init__.py`
+Initialize the app with dynamic database connections.
+
+```python
+from flask import Flask
+from flask_jwt_extended import JWTManager
+from flask_cors import CORS
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+def create_app():
+    app = Flask(__name__)
+    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY')
+    jwt = JWTManager(app)
+    CORS(app, resources={r"/api/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE"]}})
+    
+    # Initialize database connections
+    from .database.connection_manager import create_engine_session
+    default_engine, default_session = create_engine_session('DEFAULT')
+    secondary_engine, secondary_session = create_engine_session('SECONDARY')
+    
+    # Register blueprints
+    from .routes import workflows, whitelists, keynamemapping, volumematrix, upload, login
+    app.register_blueprint(workflows.bp)
+    app.register_blueprint(whitelists.bp)
+    app.register_blueprint(keynamemapping.bp)
+    app.register_blueprint(volumematrix.bp)
+    app.register_blueprint(upload.bp)
+    app.register_blueprint(login.bp)
+    app.register_blueprint(login.token_bp)
+    
+    return app
+```
+
+#### `app/models/`
+Create separate files for models specific to each database.
+
+**Example for `app/models/default_models.py`:**
+
+```python
+from app.database.connection_manager import Base
+from sqlalchemy import Column, Integer, String, Boolean, DateTime
+
+class DefaultModel(Base):
+    __tablename__ = 'default_table'
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    is_active = Column(Boolean, default=True)
+    created_date = Column(DateTime, default=datetime.utcnow)
+    modified_date = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+```
+
+**Example for `app/models/secondary_models.py`:**
+
+```python
+from app.database.connection_manager import Base
+from sqlalchemy import Column, Integer, String, Boolean, DateTime
+
+class SecondaryModel(Base):
+    __tablename__ = 'secondary_table'
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    is_active = Column(Boolean, default=True)
+    created_date = Column(DateTime, default=datetime.utcnow)
+    modified_date = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+```
+
+#### `app/routes/`
+Update routes to use models from the appropriate file based on the database connection.
+
+**Example for `app/routes/default_routes.py`:**
+
+```python
+from flask import Blueprint, request, jsonify
+from app.models.default_models import DefaultModel
+from app.database.connection_manager import session_scope
+
+bp = Blueprint('default_routes', __name__)
+
+@bp.route('/default', methods=['GET'])
+def get_default():
+    with session_scope('DEFAULT') as session:
+        data = session.query(DefaultModel).all()
+        return jsonify([item.to_dict() for item in data])
+```
+
+**Example for `app/routes/secondary_routes.py`:**
+
+```python
+from flask import Blueprint, request, jsonify
+from app.models.secondary_models import SecondaryModel
+from app.database.connection_manager import session_scope
+
+bp = Blueprint('secondary_routes', __name__)
+
+@bp.route('/secondary', methods=['GET'])
+def get_secondary():
+    with session_scope('SECONDARY') as session:
+        data = session.query(SecondaryModel).all()
+        return jsonify([item.to_dict() for item in data])
+```
+
+### Summary
+- **Environment Variables**: Store configurations for each database.
+- **Connection Manager**: Dynamically create connections based on environment variables.
+- **Models**: Keep separate models for different databases.
+- **Routes**: Use the appropriate models and connections.
+
+This setup will make it easier to manage multiple databases and switch connections as needed, without altering the core application logic.
+
+
+
+
+
+
+
+
+
+------------------------
 
 from app import create_app
 import os
