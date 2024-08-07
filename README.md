@@ -1,3 +1,38 @@
+
+from app import create_app
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+def main():
+    """Run the Flask application."""
+    app = create_app()
+
+    # Determine if the environment is local
+    is_local = os.environ.get('ENV') == 'local'
+
+    if is_local:
+        app.run(
+            debug=True,  # Enable debug mode
+            host='0.0.0.0',  # Allow access from all IP addresses
+            port=int(os.environ.get('BACKEND_PORT', 5000))  # Use BACKEND_PORT from environment or default to 5000
+        )
+    else:
+        app.run()  # Use default settings for non-local environments
+
+if __name__ == '__main__':
+    main()
+
+
+
+
+
+
+
+
+
 def get_service_details(service_name):
     with Session() as session:
         # Fetch all related records where service_name is either a lender or a borrower
