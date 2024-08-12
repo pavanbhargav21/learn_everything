@@ -1,3 +1,89 @@
+class WorkflowResource(Resource):
+    #@jwt_required()
+    @cross_origin()
+    def get(self):
+        with session_scope() as session:
+            workflows = session.query(Workflow).all()
+            data = [{
+                'id': w.id,
+                'workflow_name': w.workflow_name,
+                'system_name': w.system_name,
+                # Uncomment the following lines if you need more fields
+                # 'system_version': w.system_version,
+                # 'is_feed': w.is_feed,
+                # 'is_extension_enabled': w.is_extension_enabled,
+                # 'layout_type': w.layout_type,
+                # 'is_active': w.is_active,
+                # 'created_date': w.created_date,
+                # 'created_by': w.created_by,
+                # 'modified_date': w.modified_date,
+                # 'modified_by': w.modified_by
+            } for w in workflows]
+        return jsonify(data)
+
+    #@jwt_required()
+    @cross_origin()
+    def post(self):
+        with session_scope() as session:
+            data = request.get_json()
+            new_workflow = Workflow(
+                workflow_name=data['workflow_name'],
+                system_name=data['system_name'],
+                created_date=datetime.utcnow()
+            )
+            session.add(new_workflow)
+            # No need to call session.commit() as session_scope handles it
+
+            # Prepare the response with created workflow details
+            response = {
+                'id': new_workflow.id,
+                'workflow_name': new_workflow.workflow_name,
+                'system_name': new_workflow.system_name
+            }
+        return jsonify(response), 201
+
+    #@jwt_required()
+    @cross_origin()
+    def put(self, id):
+        with session_scope() as session:
+            data = request.get_json()
+            workflow = session.query(Workflow).get(id)
+            if not workflow:
+                return {'message': 'Workflow entry not found'}, 404
+
+            workflow.workflow_name = data['workflow_name']
+            workflow.system_name = data['system_name']
+            # Uncomment the following lines if you need to update more fields
+            # workflow.system_version = data['system_version']
+            # workflow.is_feed = data['is_feed']
+            # workflow.is_extension_enabled = data['is_extension_enabled']
+            # workflow.layout_type = data['layout_type']
+            # workflow.is_active = data['is_active']
+            workflow.modified_by = data['modified_by']
+            workflow.modified_date = datetime.utcnow()
+
+            # No need to call session.commit() as session_scope handles it
+        return {'message': 'Workflow entry updated successfully'}, 200
+
+    #@jwt_required()
+    @cross_origin()
+    def delete(self, id):
+        with session_scope() as session:
+            workflow = session.query(Workflow).get(id)
+            if not workflow:
+                return {'message': 'Workflow entry not found'}, 404
+
+            session.delete(workflow)
+            # No need to call session.commit() as session_scope handles it
+        return {'message': 'Workflow entry deleted successfully'}, 200
+
+api.add_resource(WorkflowResource, '/')
+api.add_resource(WorkflowDetailResource, '/<int:id>')
+
+
+
+
+
 
 The error "name 'response' is not defined" usually indicates that there’s a problem with how the `response` object is being used or created in your code. In Flask-RESTful, you generally do not need to define an `OPTIONS` method manually unless you have specific needs. However, if you do need to define it, you should ensure you are correctly importing and using the necessary components.
 
