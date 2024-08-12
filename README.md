@@ -1,3 +1,118 @@
+
+class WhitelistResource(Resource):
+    #@jwt_required()
+    @cross_origin()
+    def get(self):
+        with session_scope() as session:
+            workflow_alias = aliased(Workflow)
+            whitelist_alias = aliased(Whitelist)
+            query = session.query(
+                whitelist_alias.id,
+                whitelist_alias.workflow_name,
+                whitelist_alias.workflow_url,
+                whitelist_alias.environment,
+                whitelist_alias.is_active,
+                workflow_alias.system_name,
+                whitelist_alias.window_titles
+            ).join(workflow_alias, whitelist_alias.workflow_id == workflow_alias.id).filter(whitelist_alias.is_active == True)
+            whitelists = query.all()
+            data = [{
+                'id': w.id,
+                'workflow_name': w.workflow_name,
+                'system': w.system_name,
+                'url': w.workflow_url,
+                'environment': w.environment,
+                'is_active': w.is_active,
+                'titles': w.window_titles
+            } for w in whitelists]
+        return jsonify(data)
+
+    #@jwt_required()
+    @cross_origin()
+    def post(self):
+        with session_scope() as session:
+            data = request.get_json()
+            workflow_name = data['workflow_name']
+            titles = {title.strip() for title in data['titles'].split(',')}  # Use a set for unique titles
+
+            # Check if any of the window_titles already exist with another workflow
+            existing_titles_query = session.query(Whitelist.window_titles).filter(
+                Whitelist.window_titles.in_(titles),
+                Whitelist.workflow_name != workflow_name
+            ).distinct().all()
+
+            existing_titles = {title for (title,) in existing_titles_query}  # Convert to set for quick lookup
+
+            if existing_titles:
+                return jsonify({'message': 'One or more window titles already exist with another workflow'}), 400
+
+            # Create or get the workflow
+            workflow = session.query(Workflow).filter_by(workflow_name=workflow_name).first()
+            if not workflow:
+                new_workflow = Workflow(
+                    workflow_name=workflow_name,
+                    system_name=workflow_name,
+                    created_date=datetime.utcnow()
+                )
+                session.add(new_workflow)
+                session.commit()  # Commit to get the new workflow ID
+
+                workflow = session.query(Workflow).filter_by(workflow_name=workflow_name).first()
+
+            # Create new whitelist entry
+            new_whitelist = Whitelist(
+                workflow_id=workflow.id,
+                workflow_name=workflow_name,
+                workflow_url=data['url'],
+                environment=data['environment'],
+                is_active=True,
+                window_titles=data['titles'],
+                created_date=datetime.utcnow()
+            )
+            session.add(new_whitelist)
+        
+        return jsonify({'message': 'Whitelist entry created successfully'}), 201
+
+    #@jwt_required()
+    @cross_origin()
+    def put(self, id):
+        with session_scope() as session:
+            data = request.get_json()
+            whitelist = session.query(Whitelist).get(id)
+            if not whitelist:
+                return {'message': 'Whitelist entry not found'}, 404
+
+            whitelist.workflow_name = data['workflow_name']
+            whitelist.workflow_url = data['url']
+            whitelist.environment = data['environment']
+            whitelist.is_active = data['isActive']
+            whitelist.window_titles = data['title']
+            whitelist.modified_date = datetime.utcnow()
+
+        return {'message': 'Whitelist entry updated successfully'}, 200
+
+    #@jwt_required()
+    @cross_origin()
+    def delete(self, id):
+        with session_scope() as session:
+            whitelist = session.query(Whitelist).get(id)
+            if not whitelist:
+                return {'message': 'Whitelist entry not found'}, 404
+            whitelist.is_active = False
+        return {'message': 'Whitelist entry deleted successfully'}, 200
+
+api.add_resource(WhitelistResource, '/')
+api.add_resource(WhitelistDetailResource, '/<int:id>')
+
+
+
+
+
+
+
+
+
+
 class WorkflowResource(Resource):
     #@jwt_required()
     @cross_origin()
