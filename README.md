@@ -1,4 +1,83 @@
 
+If you want to avoid raw queries and keep things simple, you can work with SQLAlchemy and Python to handle comma-separated values in a more straightforward way. Here’s a simplified approach:
+
+### Simplified Approach
+
+1. **Fetch All Whitelists**: Retrieve all existing `Whitelist` entries, including their `window_titles`. This will be done once and kept in memory for checking against new entries.
+
+2. **Check for Duplicates**: Convert the comma-separated `window_titles` to sets for easy comparison and check if any titles already exist with other workflows.
+
+3. **Add New Entries**: If there are no duplicates, proceed to add new entries to the database.
+
+Here’s how you can implement this approach:
+
+```python
+class WhitelistResource(Resource):
+    @cross_origin()
+    def post(self):
+        with session_scope() as session:
+            data = request.get_json()
+            workflow_name = data['workflow_name']
+            new_titles = {title.strip() for title in data['titles'].split(',')}  # New titles as a set
+
+            # Fetch all existing whitelists and their window_titles
+            existing_whitelists = session.query(Whitelist).filter(Whitelist.is_active == True).all()
+
+            existing_titles = set()
+            for wl in existing_whitelists:
+                # Split existing titles and add to the set
+                titles = {title.strip() for title in wl.window_titles.split(',')}
+                existing_titles.update(titles)
+
+            # Check for overlap
+            overlap = new_titles & existing_titles  # Intersection of sets
+            if overlap:
+                return jsonify({'message': f'One or more window titles already exist with another workflow: {", ".join(overlap)}'}), 400
+
+            # Create or get the workflow
+            workflow = session.query(Workflow).filter_by(workflow_name=workflow_name).first()
+            if not workflow:
+                new_workflow = Workflow(
+                    workflow_name=workflow_name,
+                    system_name=workflow_name,
+                    created_date=datetime.utcnow()
+                )
+                session.add(new_workflow)
+                session.commit()  # Commit to get the new workflow ID
+
+                workflow = session.query(Workflow).filter_by(workflow_name=workflow_name).first()
+
+            # Create new whitelist entry
+            new_whitelist = Whitelist(
+                workflow_id=workflow.id,
+                workflow_name=workflow_name,
+                workflow_url=data['url'],
+                environment=data['environment'],
+                is_active=True,
+                window_titles=data['titles'],
+                created_date=datetime.utcnow()
+            )
+            session.add(new_whitelist)
+
+        return jsonify({'message': 'Whitelist entry created successfully', 'workflow_id': workflow.id}), 201
+```
+
+### **Explanation:**
+
+1. **Fetching Existing Whitelists**: Retrieve all active `Whitelist` entries. This avoids querying individual titles and handles them in bulk.
+
+2. **Set Operations**: Convert existing `window_titles` and new `titles` to sets for efficient comparison. Use set intersection to find any overlaps.
+
+3. **Adding New Entries**: If no overlap is found, proceed to create and add new entries. Commit changes to get the new workflow ID if a new workflow is created.
+
+This approach keeps the logic simple, avoids raw SQL queries, and uses SQLAlchemy efficiently for checking duplicates.
+
+
+
+
+
+
+
 class WhitelistResource(Resource):
     #@jwt_required()
     @cross_origin()
