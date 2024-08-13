@@ -1,4 +1,212 @@
 
+
+Sure, let's provide the full code for `azure_authentication.py`, `login.py`, and ensure everything aligns with your project structure and requirements.
+
+### `azure_authentication.py`
+
+This module handles interactions with Azure AD to get user information and manage authentication.
+
+```python
+import requests
+from flask import current_app as app
+
+def get_token_from_code(auth_code, redirect_uri):
+    """
+    Exchange authorization code for access token.
+    """
+    token_url = 'https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token'
+    data = {
+        'grant_type': 'authorization_code',
+        'code': auth_code,
+        'redirect_uri': redirect_uri,
+        'client_id': app.config['AZURE_CLIENT_ID'],
+        'client_secret': app.config['AZURE_CLIENT_SECRET'],
+    }
+    response = requests.post(token_url, data=data)
+    return response.json()
+
+def get_me(access_token, endpoint):
+    """
+    Get user information from Microsoft Graph API.
+    """
+    headers = {'Authorization': f'Bearer {access_token}'}
+    graph_url = f'https://graph.microsoft.com/v1.0{endpoint}'
+    response = requests.get(graph_url, headers=headers)
+    return response.json()
+
+def save_user_information(user_info):
+    """
+    Save user information and return the saved user details.
+    """
+    # Assuming you have a function or ORM to save user details to the database
+    from app.models import User  # Adjust the import based on actual structure
+    from app.database import session_scope
+    
+    with session_scope() as session:
+        user = session.query(User).filter_by(email=user_info.get('u_email')).first()
+        if user:
+            # Update existing user
+            user.first_name = user_info.get('u_first_name')
+            user.last_name = user_info.get('u_last_name')
+            user.is_active = user_info.get('is_active')
+            user.psid = user_info.get('u_psid')
+            user.manager_psid = user_info.get('u_lm_psid')
+            user.manager_email = user_info.get('u_lm_email')
+        else:
+            # Create new user
+            user = User(
+                first_name=user_info.get('u_first_name'),
+                last_name=user_info.get('u_last_name'),
+                email=user_info.get('u_email'),
+                is_active=user_info.get('is_active'),
+                psid=user_info.get('u_psid'),
+                manager_psid=user_info.get('u_lm_psid'),
+                manager_email=user_info.get('u_lm_email')
+            )
+            session.add(user)
+        session.commit()
+        return user
+```
+
+### `login.py`
+
+Ensure this file is updated with correct imports and functionality based on your requirements.
+
+```python
+from flask import Blueprint, request, jsonify, redirect
+from flask_restful import Api, Resource
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, create_access_token
+from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime
+from urllib.parse import urlencode
+from app.models import UserSession  # Import UserSession from app.models
+from app.database import session_scope  # Import session_scope from app.database
+from app.azure_authentication import get_me, save_user_information, get_token_from_code  # Import required functions from azure_authentication
+from app import jwt, BACKEND_API_URL, FROENTEND_API_URL  # Import jwt and other settings from app
+
+api_login = Api(Blueprint('login', __name__, url_prefix='/login'))
+
+@jwt.token_in_blocklist_loader
+def check_if_token_in_blacklist(jwt_header, jwt_payload):
+    token = jwt_payload["jti"]
+    with session_scope() as session:
+        return session.query(UserSession).filter_by(token=token, is_blacklisted=True).scalar() is not None
+
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    return jsonify({"msg": "The token has expired"}), 401
+
+@jwt.invalid_token_loader
+def invalid_token_callback(error):
+    return jsonify({"msg": "Invalid token"}), 401
+
+def blacklist_token(token):
+    with session_scope() as session:
+        user_session = session.query(UserSession).filter_by(token=token).first()
+        if user_session:
+            user_session.is_blacklisted = True
+            session.commit()
+
+class GetTokenFromAzure(Resource):
+    @cross_origin()
+    def get(self):
+        auth_code = request.args.get('code')
+        redirect_uri = f'{BACKEND_API_URL}/get_token'
+        token = get_token_from_code(auth_code, redirect_uri)
+        
+        if token.get('access_token'):
+            access_token = token.get('access_token')
+            get_user = get_me(access_token, '/me')
+            user_email = get_user.get('userPrincipalName')
+            user_id = get_user.get('id')
+            get_user_details = get_me(access_token, f'/users/{user_id}?$select=streetAddress,employeeID,department,companyName,mobilePhone,country')
+            get_manager = get_me(access_token, f'/users/{user_id}/manager?$select=mailNickname,mail')
+
+            user_info = save_user_information({
+                'u_first_name': get_user.get('givenName', ''),
+                'u_last_name': get_user.get('surname', ''),
+                'is_active': 'Y',
+                'u_email': get_user.get('mail', ''),
+                'u_psid': get_user_details.get('employeeId', ''),
+                'u_lm_psid': get_manager.get('mailNickname'),
+                'u_lm_email': get_manager.get('mail'),
+            })
+
+            # Ensure user_info has the required attribute
+            user_id = user_info.id  # Adjust this according to your actual attribute
+
+            # Create JWT access token
+            jwt_access_token = create_access_token(identity=user_email, additional_claims={'user_id': user_id})
+            
+            # Save session information
+            try:
+                with session_scope() as session:
+                    session_record = UserSession(
+                        employee_id=user_info.psid,  # Adjust attribute based on your model
+                        email=user_email,
+                        name=f"{get_user.get('givenName', '')} {get_user.get('surname', '')}",
+                        login_time=datetime.utcnow(),
+                        token=jwt_access_token,
+                        is_active=True
+                    )
+                    session.add(session_record)
+                    # Commit is automatically handled by session_scope()
+                    
+            except SQLAlchemyError as e:
+                return jsonify({"msg": "Database error"}), 500
+
+            user = {
+                'user_name': get_user.get('displayName', ''),
+                'user_email': get_user.get('userPrincipalName', ''),
+                'access_token': jwt_access_token,
+                'user_phone_number': get_user_details.get('mobilePhone', ''),
+                'user_office_location': get_user_details.get('streetAddress', ''),
+                'user_language': get_user.get('preferredLanguage', ''),
+                'user_job_title': get_user.get('jobTitle', ''),
+                'user_employee_id': get_user_details.get('employeeId', ''),
+                'user_department': get_user_details.get('department', ''),
+                'user_company_name': get_user_details.get('companyName', ''),
+                'u_id': user_id
+            }
+            return redirect(f'{FROENTEND_API_URL}/oauth/login/redirect/?{urlencode(user)}')
+
+class Logout(Resource):
+    @jwt_required()
+    @cross_origin()
+    def post(self):
+        identity = get_jwt_identity()
+        token = get_jwt()['jti']  # Get JWT ID
+        blacklist_token(token)
+
+        with session_scope() as session:
+            user_session = session.query(UserSession).filter_by(token=token).first()
+            if user_session:
+                user_session.logout_time = datetime.utcnow()
+                user_session.is_active = False
+                # Commit is automatically handled by session_scope()
+        
+        return jsonify({"msg": "Logout successful"}), 200
+
+api_login.add_resource(GetTokenFromAzure, '/get_token_from_azure')
+api_login.add_resource(Logout, '/logout')
+```
+
+### Notes:
+- **Imports:** Adjusted for your project structure.
+- **`save_user_information`:** Assumed to be in `azure_authentication.py`, returning a user object with attributes used.
+- **UID Handling:** Ensure the correct attribute is used based on your model's definition.
+- **Session Handling:** Managed by `session_scope()`, which handles commits and rollbacks.
+
+Make sure to adjust paths and model attributes according to your actual setup. If you have further details or corrections, feel free to provide them!
+
+
+
+
+
+
+
+
+
 If you want to avoid raw queries and keep things simple, you can work with SQLAlchemy and Python to handle comma-separated values in a more straightforward way. Here’s a simplified approach:
 
 ### Simplified Approach
