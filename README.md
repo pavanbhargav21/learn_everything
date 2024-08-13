@@ -1,3 +1,139 @@
+I understand. If you need to handle JWT operations and user session management separately, you can create a dedicated function to handle the creation of user sessions. This function will accept parameters like the JWT ID, user email, and other details, and then it will save this information to the database. This approach will help you avoid issues with decorators and make the code cleaner.
+
+Here's how you can refactor your code to include a separate function for handling user sessions:
+
+### **1. Create a Separate Function for User Session Management**
+
+Define a function in a utility module (e.g., `app/utils.py`) to handle session creation:
+
+```python
+# app/utils.py
+
+from app.database import session_scope
+from app.models import UserSession
+from sqlalchemy.exc import SQLAlchemyError
+
+def create_user_session(jwt_id, user_email, user_name, login_time, psid):
+    try:
+        with session_scope() as session:
+            session_record = UserSession(
+                employee_id=psid,
+                email=user_email,
+                name=user_name,
+                login_time=login_time,
+                token=jwt_id,  # Store the JWT ID
+                is_active=True
+            )
+            session.add(session_record)
+            session.commit()
+    except SQLAlchemyError as e:
+        # Handle the database error as needed
+        raise Exception("Database error")
+```
+
+### **2. Update `GetTokenFromAzure` to Use the New Function**
+
+Update your `GetTokenFromAzure` class to call this function instead of directly handling the database operations:
+
+```python
+from flask import Blueprint, request, jsonify, redirect
+from flask_restful import Api, Resource
+from flask_jwt_extended import create_access_token, get_jwt
+from app.utils import create_user_session  # Import the utility function
+from app.azure_authentication import get_me, save_user_information, get_token_from_code  # Import required functions
+from datetime import datetime
+from urllib.parse import urlencode
+from app import jwt, BACKEND_API_URL, FROENTEND_API_URL
+
+api_login = Api(Blueprint('login', __name__, url_prefix='/login'))
+
+class GetTokenFromAzure(Resource):
+    @cross_origin()
+    def get(self):
+        auth_code = request.args.get('code')
+        redirect_uri = f'{BACKEND_API_URL}/get_token'
+        token = get_token_from_code(auth_code, redirect_uri)
+        
+        if token.get('access_token'):
+            access_token = token.get('access_token')
+            get_user = get_me(access_token, '/me')
+            user_email = get_user.get('userPrincipalName')
+            user_id = get_user.get('id')
+            get_user_details = get_me(access_token, f'/users/{user_id}?$select=streetAddress,employeeID,department,companyName,mobilePhone,country')
+            get_manager = get_me(access_token, f'/users/{user_id}/manager?$select=mailNickname,mail')
+
+            user_info = save_user_information({
+                'u_first_name': get_user.get('givenName', ''),
+                'u_last_name': get_user.get('surname', ''),
+                'is_active': 'Y',
+                'u_email': get_user.get('mail', ''),
+                'u_psid': get_user_details.get('employeeId', ''),
+                'u_lm_psid': get_manager.get('mailNickname'),
+                'u_lm_email': get_manager.get('mail'),
+            })
+
+            user_id = user_info.id  # Adjust this according to your actual attribute
+
+            # Create JWT access token
+            jwt_access_token = create_access_token(identity=user_email, additional_claims={'user_id': user_id})
+            jwt_id = get_jwt()['jti']  # Get the unique JWT ID
+            
+            # Call the function to create user session
+            try:
+                create_user_session(jwt_id, user_email, f"{get_user.get('givenName', '')} {get_user.get('surname', '')}", datetime.utcnow(), user_info.psid)
+            except Exception as e:
+                return jsonify({"msg": "Database error"}), 500
+
+            user = {
+                'user_name': get_user.get('displayName', ''),
+                'user_email': get_user.get('userPrincipalName', ''),
+                'access_token': jwt_access_token,
+                'user_phone_number': get_user_details.get('mobilePhone', ''),
+                'user_office_location': get_user_details.get('streetAddress', ''),
+                'user_language': get_user.get('preferredLanguage', ''),
+                'user_job_title': get_user.get('jobTitle', ''),
+                'user_employee_id': get_user_details.get('employeeId', ''),
+                'user_department': get_user_details.get('department', ''),
+                'user_company_name': get_user_details.get('companyName', ''),
+                'u_id': user_id
+            }
+            return redirect(f'{FROENTEND_API_URL}/oauth/login/redirect/?{urlencode(user)}')
+```
+
+### **3. Update `Logout` to Use the New Function**
+
+The `Logout` function does not need changes related to session management directly since it's handled by the `create_user_session` function. Just ensure that the token ID is correctly used:
+
+```python
+class Logout(Resource):
+    @jwt_required()
+    @cross_origin()
+    def post(self):
+        token_id = get_jwt()['jti']  # Get JWT ID from the current token
+        blacklist_token(token_id)
+
+        with session_scope() as session:
+            user_session = session.query(UserSession).filter_by(token=token_id).first()
+            if user_session:
+                user_session.logout_time = datetime.utcnow()
+                user_session.is_active = False
+                # Commit is automatically handled by session_scope()
+        
+        return jsonify({"msg": "Logout successful"}), 200
+```
+
+### Summary
+
+- **Utility Function**: Created a utility function `create_user_session` to handle user session creation.
+- **`GetTokenFromAzure` Update**: Refactored to call `create_user_session`.
+- **`Logout`**: Ensure it uses the token ID properly.
+
+This approach separates concerns, making your code cleaner and more maintainable. It also ensures that your session management and token operations are handled correctly.
+
+
+
+
+
 
 
 Sure, let's provide the full code for `azure_authentication.py`, `login.py`, and ensure everything aligns with your project structure and requirements.
