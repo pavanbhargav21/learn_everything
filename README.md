@@ -1,4 +1,27 @@
 
+-- Create AID_QID_MAPPING table
+CREATE TABLE AID_QID_MAPPING (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    aid VARCHAR(255) NOT NULL,
+    qid VARCHAR(255) NOT NULL,
+    description TEXT,
+    UNIQUE (aid, qid)
+);
+
+-- Alter PLUGIN_KEY_VALUE_MAPPING table to add aid and qid columns
+ALTER TABLE PLUGIN_KEY_VALUE_MAPPING
+ADD COLUMN aid VARCHAR(255) NOT NULL,
+ADD COLUMN qid VARCHAR(255) NOT NULL;
+
+-- Add foreign key constraints on aid and qid columns
+ALTER TABLE PLUGIN_KEY_VALUE_MAPPING
+ADD CONSTRAINT fk_aid_qid
+FOREIGN KEY (aid, qid)
+REFERENCES AID_QID_MAPPING (aid, qid);
+
+
+
+
 You can add a normal `id` column as the primary key in the `AIDQIDMapping` table, and still use `AID` and `QID` as foreign keys in the `KeyNameMapping` table. Here’s how you can structure your tables:
 
 ### Updated `AIDQIDMapping` Table with an `id` Column
