@@ -1,4 +1,64 @@
 
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_cors import cross_origin
+from app.models import KeyNameMapping
+from app import session_scope
+from datetime import datetime
+from sqlalchemy import tuple_
+
+bp = Blueprint('keynamemapping', __name__, url_prefix='/api/keynamemapping')
+api = Api(bp)
+
+class KeynameMappingResource(Resource):
+    @cross_origin()
+    def post(self):
+        with session_scope() as session:
+            data = request.get_json()
+
+            # Prepare the data to check for existing entries
+            entries_to_check = [
+                (item['workflowId'], item['keyname'], item['layout']) for item in data
+            ]
+
+            # Perform a single query to find existing entries
+            existing_entries = session.query(
+                KeyNameMapping.workflow_id,
+                KeyNameMapping.activity_key_name,
+                KeyNameMapping.activity_key_layout
+            ).filter(
+                tuple_(KeyNameMapping.workflow_id, KeyNameMapping.activity_key_name, KeyNameMapping.activity_key_layout).in_(entries_to_check)
+            ).all()
+
+            # Convert existing entries to a set for quick lookup
+            existing_set = set(existing_entries)
+
+            # Filter out new entries that already exist
+            new_entries = [
+                KeyNameMapping(
+                    workflow_id=item['workflowId'],
+                    activity_key_name=item['keyname'],
+                    activity_key_layout=item['layout'],
+                    remarks=item['remarks'],
+                    created_date=datetime.utcnow()
+                )
+                for item in data
+                if (item['workflowId'], item['keyname'], item['layout']) not in existing_set
+            ]
+
+            # Bulk save all new entries at once
+            if new_entries:
+                session.bulk_save_objects(new_entries)
+
+        return {"message": "Key name mappings processed successfully"}, 201
+
+api.add_resource(KeynameMappingResource, '/')
+
+
+
+
+
+
 To reflect the changes you made to your database schema in your `models.py` file, you'll need to update your SQLAlchemy models to include the new tables, columns, and relationships. Here's how you can adjust your `models.py` to match the changes:
 
 ### 1. **Update the `AAD_QID_Mapping` Table**
