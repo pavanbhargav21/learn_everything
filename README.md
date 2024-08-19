@@ -16,6 +16,70 @@ class KeynameMappingResource(Resource):
         with session_scope() as session:
             data = request.get_json()
 
+            # Prepare data for checking and new entry creation
+            entries_to_check = []
+            new_entries = []
+
+            for item in data:
+                entry_tuple = (item['workflowId'], item['keyname'], item['layout'])
+                entries_to_check.append(entry_tuple)
+
+                new_entries.append(KeyNameMapping(
+                    workflow_id=item['workflowId'],
+                    activity_key_name=item['keyname'],
+                    activity_key_layout=item['layout'],
+                    remarks=item['remarks'],
+                    created_date=datetime.utcnow()
+                ))
+
+            # Perform a single query to find existing entries
+            existing_entries = session.query(
+                tuple_(KeyNameMapping.workflow_id, KeyNameMapping.activity_key_name, KeyNameMapping.activity_key_layout)
+            ).filter(
+                tuple_(KeyNameMapping.workflow_id, KeyNameMapping.activity_key_name, KeyNameMapping.activity_key_layout).in_(entries_to_check)
+            ).all()
+
+            # Convert existing entries to a set for quick lookup
+            existing_set = set(existing_entries)
+
+            # Filter out new entries that already exist
+            filtered_new_entries = [
+                entry for entry in new_entries
+                if (entry.workflow_id, entry.activity_key_name, entry.activity_key_layout) not in existing_set
+            ]
+
+            # Check if there are duplicates
+            if len(filtered_new_entries) < len(new_entries):
+                return {"message": "One or more key name mappings already exist"}, 400
+
+            # Bulk save all new entries at once
+            if filtered_new_entries:
+                session.bulk_save_objects(filtered_new_entries)
+
+        return {"message": "Key name mappings added successfully"}, 201
+
+api.add_resource(KeynameMappingResource, '/')
+
+
+
+
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_cors import cross_origin
+from app.models import KeyNameMapping
+from app import session_scope
+from datetime import datetime
+from sqlalchemy import tuple_
+
+bp = Blueprint('keynamemapping', __name__, url_prefix='/api/keynamemapping')
+api = Api(bp)
+
+class KeynameMappingResource(Resource):
+    @cross_origin()
+    def post(self):
+        with session_scope() as session:
+            data = request.get_json()
+
             # Prepare the data to check for existing entries
             entries_to_check = [
                 (item['workflowId'], item['keyname'], item['layout']) for item in data
