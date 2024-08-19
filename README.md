@@ -1,3 +1,113 @@
+
+You can add a normal `id` column as the primary key in the `AIDQIDMapping` table, and still use `AID` and `QID` as foreign keys in the `KeyNameMapping` table. Here’s how you can structure your tables:
+
+### Updated `AIDQIDMapping` Table with an `id` Column
+```python
+from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
+class AIDQIDMapping(Base):
+    __tablename__ = 'AID_QID_MAPPING'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    aid = Column(String, nullable=False)
+    qid = Column(String, nullable=False)
+    description = Column(String)
+
+    # Unique constraint to ensure unique combinations of AID and QID
+    __table_args__ = (
+        UniqueConstraint('aid', 'qid'),
+    )
+
+    # Relationship to KeyNameMapping (if you want to use relationships)
+    key_name_mappings = relationship("KeyNameMapping", back_populates="aid_qid_mapping")
+```
+
+### Updated `KeyNameMapping` Table with Foreign Keys
+```python
+class KeyNameMapping(Base):
+    __tablename__ = 'PLUGIN_KEY_VALUE_MAPPING'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workflow_id = Column(Integer, ForeignKey('PLUGIN_MASTER.id'), nullable=False)
+
+    # AID and QID as foreign keys
+    aid = Column(String, nullable=False)
+    qid = Column(String, nullable=False)
+
+    activity_key_name = Column(String, nullable=False)
+    activity_key_layout = Column(String, nullable=False)
+    ac_order = Column(Integer, nullable=False)
+    remarks = Column(String, nullable=False)
+    is_active = Column(Boolean, default=False)
+    created_date = Column(DateTime, default=datetime.utcnow)
+    created_by = Column(String(100), nullable=False)
+    modified_date = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    modified_by = Column(String(100), nullable=False)
+
+    # Enforcing foreign key relationship
+    __table_args__ = (
+        ForeignKeyConstraint(['aid', 'qid'], ['AID_QID_MAPPING.aid', 'AID_QID_MAPPING.qid']),
+    )
+
+    # Relationship to AIDQIDMapping (if you want to use relationships)
+    aid_qid_mapping = relationship("AIDQIDMapping", back_populates="key_name_mappings")
+```
+
+### Key Points
+
+1. **Primary Key (`id`) in `AIDQIDMapping`**:
+   - The `AIDQIDMapping` table now includes an `id` column that serves as the primary key. This is an auto-incrementing integer that uniquely identifies each row.
+
+2. **Unique Constraint**:
+   - A unique constraint on the combination of `aid` and `qid` ensures that each pair of `aid` and `qid` values is unique.
+
+3. **Foreign Keys in `KeyNameMapping`**:
+   - The `aid` and `qid` columns in the `KeyNameMapping` table are defined as foreign keys that reference the `aid` and `qid` columns in the `AIDQIDMapping` table.
+   - The `ForeignKeyConstraint` ensures that any combination of `aid` and `qid` in `KeyNameMapping` must exist in the `AIDQIDMapping` table.
+
+4. **Relationships (Optional)**:
+   - If you want to use relationships for easier querying, you can define them using SQLAlchemy's `relationship` function. This is optional but can simplify complex queries.
+
+### Example Usage
+
+Here’s how you might use these tables in practice:
+
+```python
+# Inserting a new entry into AIDQIDMapping
+new_aid_qid_mapping = AIDQIDMapping(
+    aid="A123",
+    qid="Q456",
+    description="Mapping for A123 and Q456"
+)
+session.add(new_aid_qid_mapping)
+session.commit()
+
+# Inserting a new entry into KeyNameMapping with foreign key constraints
+new_key_name_mapping = KeyNameMapping(
+    workflow_id=1,
+    aid="A123",
+    qid="Q456",
+    activity_key_name="Key Name Example",
+    activity_key_layout="Layout Example",
+    ac_order=1,
+    remarks="Some remarks",
+    created_by="admin"
+)
+session.add(new_key_name_mapping)
+session.commit()
+
+# Querying KeyNameMapping entries related to a specific AID and QID
+key_mappings = session.query(KeyNameMapping).filter_by(aid="A123", qid="Q456").all()
+```
+
+This setup allows you to maintain a regular `id` primary key in the `AIDQIDMapping` table while still enforcing the foreign key relationship between `AID`/`QID` pairs and `KeyNameMapping` records. The `id` column can be used for other references or indexing, while the `aid` and `qid` columns are used for data integrity checks in the `KeyNameMapping` table.
+
+
+
+
+
 I understand. If you need to handle JWT operations and user session management separately, you can create a dedicated function to handle the creation of user sessions. This function will accept parameters like the JWT ID, user email, and other details, and then it will save this information to the database. This approach will help you avoid issues with decorators and make the code cleaner.
 
 Here's how you can refactor your code to include a separate function for handling user sessions:
