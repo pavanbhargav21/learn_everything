@@ -1,4 +1,89 @@
 
+To reflect the changes you made to your database schema in your `models.py` file, you'll need to update your SQLAlchemy models to include the new tables, columns, and relationships. Here's how you can adjust your `models.py` to match the changes:
+
+### 1. **Update the `AAD_QID_Mapping` Table**
+
+```python
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+
+Base = declarative_base()
+
+class AAD_QID_Mapping(Base):
+    __tablename__ = 'AAD_QID_MAPPING'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    aad = Column(String(100), nullable=False)
+    qid = Column(String(100), nullable=False)
+    employee_id = Column(String(100), nullable=False)
+    is_active = Column(Boolean, default=True)
+
+    # Define relationships if needed
+    # For example, if you have Employee and other related tables:
+    # employee = relationship("Employee", back_populates="aad_qid_mappings")
+```
+
+### 2. **Update the `KeyNameMapping` Table**
+
+```python
+class KeyNameMapping(Base):
+    __tablename__ = 'PLUGIN_KEY_VALUE_MAPPING'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workflow_id = Column(Integer, ForeignKey('PLUGIN_MASTER.id'), nullable=False)
+    activity_key_name = Column(String, nullable=False)
+    activity_key_layout = Column(String, nullable=False)
+    ac_order = Column(Integer, nullable=False)
+    remarks = Column(String, nullable=False)
+    is_active = Column(Boolean, default=False)
+    created_date = Column(DateTime, default=datetime.utcnow)
+    created_by = Column(String(100), nullable=False)
+    modified_date = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    modified_by = Column(String(100), nullable=False)
+
+    # Add foreign key relationships
+    aad = Column(String(100), ForeignKey('AAD_QID_MAPPING.aad'), nullable=False)
+    qid = Column(String(100), ForeignKey('AAD_QID_MAPPING.qid'), nullable=False)
+    
+    # Define relationship to AAD_QID_Mapping
+    aad_qid_mapping = relationship("AAD_QID_Mapping")
+```
+
+### 3. **Update the `VolumeMatrix` Table**
+
+```python
+class VolumeMatrix(Base):
+    __tablename__ = 'VOLUME_MATRIX'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workflow_id = Column(Integer, ForeignKey('PLUGIN_MASTER.id'), nullable=False)
+    pattern = Column(String(50), nullable=True)
+    activity_key_name = Column(String(1000), nullable=True)
+    activity_key_type = Column(String(1000), nullable=True)
+    activity_key_layout = Column(String(500), nullable=True)
+    volume_type = Column(String(100), nullable=True)  # New column
+    piece_value = Column(String(100), nullable=True)  # New column
+    field_name = Column(String(100), nullable=True)  # New column
+    field_layout = Column(String(100), nullable=True)  # New column
+    status = Column(String(50), nullable=True)  # New column
+    is_active = Column(Boolean, default=False)
+    created_date = Column(DateTime, default=datetime.utcnow, nullable=True)
+    created_by = Column(String(50), nullable=True)
+    modified_date = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+    modified_by = Column(String(50), nullable=True)
+
+    # Define relationships if needed
+```
+
+### Summary of Changes
+
+- **`AAD_QID_Mapping` Table**: Added model with columns `id`, `aad`, `qid`, `employee_id`, and `is_active`.
+- **`KeyNameMapping` Table**: Added `aad` and `qid` columns as foreign keys referencing `AAD_QID_Mapping`. Added relationships if necessary.
+- **`VolumeMatrix` Table**: Added new columns `volume_type`, `piece_value`, `field_name`, `field_layout`, and `status`.
+
+These modifications align your SQLAlchemy models with the updated database schema. Ensure to test these changes and run migrations if you're using Alembic for database migrations.
+
+
+
+
 -- Create AID_QID_MAPPING table
 CREATE TABLE AID_QID_MAPPING (
     id INT AUTO_INCREMENT PRIMARY KEY,
