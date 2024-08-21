@@ -1,3 +1,192 @@
+Got it! If the primary focus of your uniqueness check is on the combination of `workflow_id`, `process_name`, `activity_key_name`, `activity_key_layout`, and `activity_key_type`, then we can optimize the check accordingly. Instead of comparing entire patterns, we will check for the existence of a pattern based on these specific fields. This way, we avoid unnecessary comparisons and focus on what's critical.
+
+### Revised Implementation
+
+Here's how the code can be updated:
+
+1. **Check 4**: Ensure that the combination of `workflow_id`, `process_name`, `activity_key_name`, `activity_key_layout`, and `activity_key_type` does not already exist in the database.
+   
+2. **Check 1**: Ensure at least one "Button" type per pattern.
+   
+3. **Check 2**: Ensure unique `activity_key_name` within the pattern.
+   
+4. **Check 3**: Ensure no duplicate sets of keys across patterns.
+
+### Updated Code:
+
+```python
+@cross_origin()
+@jwt_required()
+def post(self):
+    with session_scope('DESIGNER') as session:
+        data = request.get_json()
+        
+        workflow_id = data['workflowId']
+        process_name = data['processName']
+        
+        # Determine max pattern value only once per workflow and process
+        max_pattern = session.query(func.max(VolumeMatrix.pattern)).filter(
+            VolumeMatrix.workflow_id == workflow_id,
+            VolumeMatrix.process_name == process_name
+        ).scalar() or 0
+        
+        # A set to track combinations of keys across patterns
+        all_key_sets = set()
+        
+        # Iterate through each pattern and perform checks in optimized order
+        for pattern in data['pattern']:
+            # Check 4: Ensure the combination of key fields does not already exist in the database
+            for field in pattern['fields']:
+                existing_entry = session.query(VolumeMatrix).filter(
+                    VolumeMatrix.workflow_id == workflow_id,
+                    VolumeMatrix.process_name == process_name,
+                    VolumeMatrix.activity_key_name == field['keyName'],
+                    VolumeMatrix.activity_key_layout == field['layout'],
+                    VolumeMatrix.activity_key_type == field['type'],
+                    VolumeMatrix.is_active == True
+                ).first()
+                
+                if existing_entry:
+                    return {"message": f"An entry with the same key combination already exists in the database for pattern {pattern['name']}."}, 400
+            
+            # Check 1: Ensure at least one "Button" type per pattern
+            if not any(field['type'] == 'Button' for field in pattern['fields']):
+                return {"message": f"Pattern {pattern['name']} must contain at least one 'Button' type field."}, 400
+            
+            # Check 2: Ensure unique activity_key_name within the pattern
+            key_names = [field['keyName'] for field in pattern['fields']]
+            if len(key_names) != len(set(key_names)):
+                return {"message": f"Duplicate keys found within pattern {pattern['name']}."}, 400
+            
+            # Check 3: Ensure no duplicate sets of keys across patterns
+            key_set = frozenset(key_names)
+            if key_set in all_key_sets:
+                return {"message": f"Duplicate key set found across patterns in {pattern['name']}."}, 400
+            all_key_sets.add(key_set)
+            
+            # Update pattern number for new entries
+            max_pattern += 1
+            pattern_value = f"Pattern{max_pattern}"
+            
+            # Insert the new pattern after checks
+            for field in pattern['fields']:
+                new_entry = VolumeMatrix(
+                    workflow_id=workflow_id,
+                    process_name=process_name,
+                    pattern=pattern_value,
+                    activity_key_name=field['keyName'],
+                    activity_key_layout=field['layout'],
+                    activity_key_type=field['type'],
+                    volume_type=field.get('volumeType'),
+                    is_value=field.get('selectedValue'),
+                    field_name=field.get('fieldName'),
+                    field_layout=field.get('fieldLayout'),
+                    status=field.get('status'),
+                    created_date=datetime.utcnow(),
+                    is_active=True,
+                )
+                session.add(new_entry)
+        
+    return {"message": "Volume Matrix added successfully"}, 201
+```
+
+### Key Changes and Reasoning:
+- **Check 4 (First Check):** We now focus only on the relevant fields (`workflow_id`, `process_name`, `activity_key_name`, `activity_key_layout`, and `activity_key_type`). This ensures that we do not unnecessarily compare other fields and quickly eliminate any duplicates based on the critical combination.
+  
+- **Remaining Checks:** The order of the remaining checks is preserved as previously optimized, ensuring that invalid patterns are filtered out before moving to more complex operations.
+
+This approach ensures that the most critical and potentially time-consuming check is done first, reducing unnecessary processing and improving performance.
+
+
+
+
+from flask import Blueprint, jsonify
+from flask_restful import Resource, Api
+from app.models import ProcessDetailsView  # Import your SQLAlchemy model
+from app import session_scope
+
+# Create a Blueprint
+process_bp = Blueprint('process', __name__)
+api = Api(process_bp)
+
+# Define the ProcessDetail resource
+class ProcessDetail(Resource):
+    def get(self):
+        # Fetch all process names from the view
+        with session_scope('DESIGNER') as session:
+            processes = session.query(ProcessDetailsView.cpm_process_name).all()
+            process_names = [process.cpm_process_name for process in processes]
+        
+        return jsonify({"process_names": process_names})
+
+# Add the resource to the API
+api.add_resource(ProcessDetail, '/process-names')
+
+# To register this Blueprint in your main application
+# from app.process import process_bp
+# app.register_blueprint(process_bp, url_prefix='/api')
+
+
+
+
+
+
+To access the view `Process_Details_View` in your SQLAlchemy models, you'll define it just like a regular table model, but without any primary key since views typically don't have one. Here's how you can define this view in your SQLAlchemy models:
+
+### SQLAlchemy Model for the View
+
+```python
+from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+
+# Assuming you're using the declarative base from SQLAlchemy
+Base = declarative_base()
+
+class ProcessDetailsView(Base):
+    __tablename__ = 'Process_Details_View'  # Name of the view
+
+    # Define the columns that correspond to the view
+    gp_aid = Column('GP_AID', String(20), primary_key=True)
+    spm_process_id = Column('SPM_PROCESS_ID', Integer)
+    cpm_process_name = Column('CPM_PROCESS_NAME', String(500))
+
+    def __repr__(self):
+        return f"<ProcessDetailsView(gp_aid={self.gp_aid}, spm_process_id={self.spm_process_id}, cpm_process_name={self.cpm_process_name})>"
+```
+
+### Key Points:
+1. **Primary Key:** While views typically don't have a primary key, SQLAlchemy expects one for ORM mappings. Here, I've used `gp_aid` as a primary key to satisfy SQLAlchemy's requirement. This may not be strictly necessary depending on how you plan to use this view, but it ensures compatibility with the ORM.
+
+2. **Model Definition:** The model is defined just like any other SQLAlchemy model. The columns correspond to the fields in the view, with appropriate data types.
+
+3. **Usage:** You can now query `ProcessDetailsView` like any other table in SQLAlchemy. For example:
+   ```python
+   session.query(ProcessDetailsView).filter(ProcessDetailsView.gp_aid == 'some_value').all()
+   ```
+
+### Usage Example
+
+Suppose you want to fetch all records from the view:
+
+```python
+# Example of querying the view
+with session_scope('DESIGNER') as session:
+    records = session.query(ProcessDetailsView).all()
+    for record in records:
+        print(record)
+```
+
+This approach lets you seamlessly integrate SQL views into your SQLAlchemy ORM, making it easy to work with views as if they were tables.
+
+
+
+
+
+
+
+
+
+
 
 from flask import Blueprint, request, jsonify
 from flask_restful import Api, Resource
