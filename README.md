@@ -1,3 +1,183 @@
+
+
+Yes, there are several optimizations you can make to improve performance and reduce latency in the `post` method. Here are some suggestions:
+
+1. **Batch Queries**: Minimize the number of queries to the database. For example, you can retrieve all existing whitelist entries and their titles in a single query rather than querying in a loop.
+
+2. **Use Set Operations**: To check for title overlaps more efficiently, you can use set operations directly instead of processing them in a loop.
+
+3. **Optimize Workflow Lookup**: Use a single query to check for the existence of the workflow and get its ID if it exists.
+
+Here's an optimized version of your `post` method:
+
+```python
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_jwt_extended import jwt_required
+from flask_cors import cross_origin
+from sqlalchemy.orm import aliased
+from sqlalchemy import func
+from app.models.model_designer import Workflow, Whitelist
+from app.database import session_scope
+from datetime import datetime
+import validators
+
+bp = Blueprint('whitelists', __name__, url_prefix='/api/whitelists')
+api = Api(bp)
+
+class WhitelistResource(Resource):
+    @jwt_required()
+    def get(self):
+        with session_scope('DESIGNER') as session:
+            workflow_alias = aliased(Workflow)
+            whitelist_alias = aliased(Whitelist)
+            query = session.query(
+                whitelist_alias.id,
+                whitelist_alias.workflow_name,
+                whitelist_alias.workflow_url,
+                whitelist_alias.environment,
+                whitelist_alias.is_active,
+                workflow_alias.system_name,
+                whitelist_alias.window_titles,
+                whitelist_alias.full_image_capture
+            ).join(workflow_alias, whitelist_alias.workflow_id == workflow_alias.id).filter(whitelist_alias.is_active == True)
+            whitelists = query.all()
+            data = [{
+                'id': w.id,
+                'workflow_name': w.workflow_name,
+                'system': w.system_name,
+                'url': w.workflow_url,
+                'environment': w.environment,
+                'is_active': w.is_active,
+                'titles': w.window_titles,
+                'full_image_capture': w.full_image_capture
+            } for w in whitelists]
+        return jsonify(data)
+
+    @cross_origin()
+    @jwt_required()
+    def post(self):
+        data = request.get_json()
+
+        # Validate URL
+        if not validators.url(data['url']):
+            return jsonify({'message': 'Invalid URL'}), 400
+
+        # Ensure at least two titles
+        titles = [title.strip() for title in data['titles'].split(',')]
+        if len(titles) < 2:
+            return jsonify({'message': 'At least two page titles are required'}), 400
+
+        with session_scope('DESIGNER') as session:
+            workflow_name = data['workflow_name']
+
+            # Retrieve or create the workflow and get its ID
+            workflow = session.query(Workflow).filter_by(workflow_name=workflow_name).first()
+            if not workflow:
+                new_workflow = Workflow(
+                    workflow_name=workflow_name,
+                    system_name=workflow_name,
+                    created_date=datetime.utcnow()
+                )
+                session.add(new_workflow)
+                session.flush()  # Commit to get the new workflow ID
+                work_id = new_workflow.id
+            else:
+                work_id = workflow.id
+
+            # Check for existing whitelist entry
+            existing_wlist = session.query(Whitelist).filter_by(
+                workflow_id=work_id,
+                workflow_url=data['url'],
+                environment=data['environment'],
+                window_titles=data['titles']
+            ).first()
+
+            if existing_wlist:
+                return jsonify({'message': 'Whitelist Entry Already Exists'}), 409
+
+            # Fetch all existing whitelists and their window_titles
+            existing_whitelists = session.query(Whitelist).filter(Whitelist.is_active == True).all()
+            existing_titles = set()
+
+            for wl in existing_whitelists:
+                titles = set(title.strip() for title in wl.window_titles.split(','))
+                existing_titles.update(titles)
+
+            # Convert new titles to a set
+            new_titles = set(titles)
+
+            # Check for overlap
+            overlap = new_titles & existing_titles  # Intersection of sets
+            if overlap:
+                return jsonify({'message': f'One or more window titles already exist with another workflow: {", ".join(overlap)}'}), 400
+
+            # Create new whitelist entry
+            new_whitelist = Whitelist(
+                workflow_id=work_id,
+                workflow_name=workflow_name,
+                workflow_url=data['url'],
+                environment=data['environment'],
+                is_active=True,
+                window_titles=data['titles'],
+                full_image_capture=data.get('screen_capture', 'no') == 'yes',  # Update based on screen_capture value
+                created_date=datetime.utcnow()
+            )
+            session.add(new_whitelist)
+
+        return jsonify({'message': 'Whitelist entry created successfully', 'workflow_id': work_id}), 201
+
+class WhitelistDetailResource(Resource):
+    @cross_origin()
+    @jwt_required()
+    def put(self, id):
+        with session_scope('DESIGNER') as session:
+            data = request.get_json()
+            whitelist = session.query(Whitelist).get(id)
+            if not whitelist:
+                return {'message': 'Whitelist entry not found'}, 404
+
+            whitelist.workflow_name = data['workflow_name']
+            whitelist.workflow_url = data['url']
+            whitelist.environment = data['environment']
+            whitelist.is_active = data['isActive']
+            whitelist.window_titles = data['title']
+            whitelist.full_image_capture = data.get('screen_capture', 'no') == 'yes'  # Update based on screen_capture value
+            whitelist.modified_date = datetime.utcnow()
+
+        return {'message': 'Whitelist entry updated successfully'}, 200
+
+    @cross_origin()
+    @jwt_required()
+    def delete(self, id):
+        with session_scope('DESIGNER') as session:
+            whitelist = session.query(Whitelist).get(id)
+            if not whitelist:
+                return {'message': 'Whitelist entry not found'}, 404
+            whitelist.is_active = False
+        return {'message': 'Whitelist entry deleted successfully'}, 200
+
+api.add_resource(WhitelistResource, '/')
+api.add_resource(WhitelistDetailResource, '/<int:id>')
+```
+
+### Key Optimizations:
+
+1. **Batch Queries**: Retrieve all necessary whitelist entries and their titles in one go. This reduces the number of database interactions compared to querying in a loop.
+
+2. **Set Operations**: Use set operations to handle title overlap checks. This is efficient for large datasets.
+
+3. **Single Workflow Lookup**: Retrieve or create the workflow and get its ID in one operation to minimize database calls.
+
+4. **Error Handling and Validation**: Included validation for URL and page titles before processing, reducing unnecessary database interactions for invalid data.
+
+By implementing these optimizations, you should see improved performance and reduced latency in your `post` method.
+
+
+
+
+
+
 To include the `process_name` as part of the uniqueness check along with the `workflow_id`, `keyname`, and `layout`, we need to incorporate it into both the in-memory checks and the database query. This ensures that each `(workflow_id, process_name, keyname, layout)` combination is unique.
 
 Here’s the updated version of the code with the `process_name` included:
