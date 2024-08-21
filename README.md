@@ -1,3 +1,97 @@
+To include the `process_name` as part of the uniqueness check along with the `workflow_id`, `keyname`, and `layout`, we need to incorporate it into both the in-memory checks and the database query. This ensures that each `(workflow_id, process_name, keyname, layout)` combination is unique.
+
+Here’s the updated version of the code with the `process_name` included:
+
+### Updated `KeynameMappingResource` Class
+
+```python
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_cors import cross_origin
+from app.models import KeyNameMapping
+from app import session_scope
+from datetime import datetime
+from sqlalchemy import tuple_
+
+bp = Blueprint('keynamemapping', __name__, url_prefix='/api/keynamemapping')
+api = Api(bp)
+
+class KeynameMappingResource(Resource):
+    @cross_origin()
+    def post(self):
+        with session_scope() as session:
+            data = request.get_json()
+
+            # Prepare data for checking and new entry creation
+            entries_to_check = [(item['workflowId'], item['processName'], item['keyname'], item['layout']) for item in data]
+
+            # In-memory check for duplicates in the current request
+            if len(entries_to_check) != len(set(entries_to_check)):
+                return {"message": "Duplicate key name mappings found in the request data"}, 400
+
+            # Perform a single query to find existing entries
+            existing_entries = session.query(
+                tuple_(KeyNameMapping.workflow_id, KeyNameMapping.process_name, KeyNameMapping.activity_key_name, KeyNameMapping.activity_key_layout)
+            ).filter(
+                tuple_(KeyNameMapping.workflow_id, KeyNameMapping.process_name, KeyNameMapping.activity_key_name, KeyNameMapping.activity_key_layout).in_(entries_to_check)
+            ).all()
+
+            # Convert existing entries to a set for quick lookup
+            existing_set = set(existing_entries)
+
+            # Check if any of the entries already exist in the database
+            for entry in entries_to_check:
+                if entry in existing_set:
+                    return {"message": f"Key name mapping {entry[2]} with layout {entry[3]} for workflow ID {entry[0]} and process name {entry[1]} already exists"}, 400
+
+            # If all checks pass, prepare the new entries for insertion
+            new_entries = [
+                KeyNameMapping(
+                    workflow_id=item['workflowId'],
+                    process_name=item['processName'],
+                    activity_key_name=item['keyname'],
+                    activity_key_layout=item['layout'],
+                    remarks=item['remarks'],
+                    created_date=datetime.utcnow()
+                ) for item in data
+            ]
+
+            # Bulk save all new entries at once
+            if new_entries:
+                session.bulk_save_objects(new_entries)
+
+        return {"message": "Key name mappings added successfully"}, 201
+
+api.add_resource(KeynameMappingResource, '/')
+```
+
+### Key Changes:
+
+1. **Include `process_name` in Uniqueness Checks**:
+   - The `entries_to_check` list now includes `process_name` as part of the tuple, making the uniqueness check based on `(workflow_id, process_name, keyname, layout)`.
+
+2. **Database Query**:
+   - The query now checks for existing entries based on all four fields: `workflow_id`, `process_name`, `activity_key_name`, and `activity_key_layout`.
+
+3. **Error Message**:
+   - The error message specifies the `process_name` along with the other fields to give more detailed feedback on what caused the duplication.
+
+### Order of Checks:
+
+- **In-Memory Duplicate Check**: Verifies that the combination of `(workflow_id, process_name, keyname, layout)` is unique within the current request.
+- **Database Query**: Ensures that this combination does not already exist in the database.
+- **Insert New Entries**: Only inserts the entries if they pass both the in-memory and database checks.
+
+This ensures that the combination of `workflow_id`, `process_name`, `keyname`, and `layout` is unique both within the current request and in the database, providing accurate validation and optimized performance.
+
+
+
+
+
+
+
+
+
 Got it! If the primary focus of your uniqueness check is on the combination of `workflow_id`, `process_name`, `activity_key_name`, `activity_key_layout`, and `activity_key_type`, then we can optimize the check accordingly. Instead of comparing entire patterns, we will check for the existence of a pattern based on these specific fields. This way, we avoid unnecessary comparisons and focus on what's critical.
 
 ### Revised Implementation
