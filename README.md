@@ -1,4 +1,81 @@
 
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_cors import cross_origin
+from app.models import KeyNameMapping
+from app import session_scope
+from datetime import datetime
+from sqlalchemy import tuple_
+
+bp = Blueprint('keynamemapping', __name__, url_prefix='/api/keynamemapping')
+api = Api(bp)
+
+class KeynameMappingResource(Resource):
+    @cross_origin()
+    def post(self):
+        data = request.get_json()
+
+        workflow_id = data['workflowId']
+        process_name = data['processName']
+        fields = data['fields']
+
+        # Step 1: Check for unique keyNames within the provided fields
+        seen_keynames = set()
+        for field in fields:
+            key_name = field['keyName']
+            if key_name in seen_keynames:
+                return {"message": f"Duplicate keyName '{key_name}' in the provided fields"}, 400
+            seen_keynames.add(key_name)
+
+        with session_scope() as session:
+            # Step 2: Prepare data for checking existing records and creating new entries
+            entries_to_check = []
+            new_entries = []
+
+            for field in fields:
+                entry_tuple = (workflow_id, process_name, field['keyName'], field['layout'])
+                entries_to_check.append(entry_tuple)
+
+                new_entries.append(KeyNameMapping(
+                    workflow_id=workflow_id,
+                    process_name=process_name,
+                    activity_key_name=field['keyName'],
+                    activity_key_layout=field['layout'],
+                    remarks=field['remarks'],
+                    created_date=datetime.utcnow()
+                ))
+
+            # Step 3: Check for existing entries in the database
+            existing_entries = session.query(
+                tuple_(KeyNameMapping.workflow_id, KeyNameMapping.process_name, KeyNameMapping.activity_key_name, KeyNameMapping.activity_key_layout)
+            ).filter(
+                tuple_(KeyNameMapping.workflow_id, KeyNameMapping.process_name, KeyNameMapping.activity_key_name, KeyNameMapping.activity_key_layout).in_(entries_to_check)
+            ).all()
+
+            # Convert existing entries to a set for quick lookup
+            existing_set = set(existing_entries)
+
+            # Step 4: Filter out new entries that already exist in the database
+            filtered_new_entries = [
+                entry for entry in new_entries
+                if (entry.workflow_id, entry.process_name, entry.activity_key_name, entry.activity_key_layout) not in existing_set
+            ]
+
+            # Step 5: Handle duplicates
+            if len(filtered_new_entries) < len(new_entries):
+                return {"message": "One or more key name mappings already exist in the database"}, 400
+
+            # Step 6: Bulk save all valid new entries
+            if filtered_new_entries:
+                session.bulk_save_objects(filtered_new_entries)
+
+        return {"message": "Key name mappings added successfully"}, 201
+
+api.add_resource(KeynameMappingResource, '/')
+
+
+
+
 
 Yes, there are several optimizations you can make to improve performance and reduce latency in the `post` method. Here are some suggestions:
 
