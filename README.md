@@ -1,3 +1,227 @@
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_cors import cross_origin
+from flask_jwt_extended import jwt_required
+from datetime import datetime
+import pandas as pd
+import os
+from werkzeug.utils import secure_filename
+from app.models.model_designer import Workflow, KeyNameMapping, VolumeMatrix
+from app.database import session_scope
+from sqlalchemy import func
+
+bp = Blueprint('upload', __name__, url_prefix='/api/upload')
+api = Api(bp)
+
+ALLOWED_EXTENSIONS = {'xls', 'xlsx'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+class UploadResource(Resource):
+    @cross_origin()
+    @jwt_required()
+    def post(self):
+        if 'file' not in request.files:
+            return jsonify({'message': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'message': 'No selected file'}), 400
+        
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file_path = os.path.join('/tmp', filename)
+            file.save(file_path)
+
+            missing_workflows = set()
+            key_store_workflows = set()
+            volume_store_workflows = set()
+
+            try:
+                with session_scope('DESIGNER') as session:
+                    results = {
+                        'AppStore': [],
+                        'KeyStore': [],
+                        'VolumeStore': [],
+                        'MissingWorkflows': []
+                    }
+                    workflow_names_from_appstore = set()
+
+                    # Process AppStore sheet
+                    app_store_data = pd.read_excel(file_path, sheet_name='AppStore', header=1)
+                    if 'WorkflowName' in app_store_data.columns:
+                        new_workflows = []
+                        for _, row in app_store_data.iterrows():
+                            workflow_name = str(row['WorkflowName'])
+                            workflow_names_from_appstore.add(workflow_name)
+
+                            existing_workflow = session.query(Workflow).filter_by(workflow_name=workflow_name, is_active=True).first()
+                            if not existing_workflow:
+                                new_workflows.append(Workflow(
+                                    workflow_name=workflow_name,
+                                    workflow_url=row.get('WorkflowURL'),
+                                    environment=row.get('Environment'),
+                                    window_titles=row.get('WindowTitles'),
+                                    each_image_capture=row.get('EachImageCapture'),
+                                    is_active=True,
+                                    created_date=datetime.utcnow()
+                                ))
+                                results['AppStore'].append(f"Created: {workflow_name}")
+                            else:
+                                results['AppStore'].append(f"Exists: {workflow_name}")
+
+                        if new_workflows:
+                            session.bulk_save_objects(new_workflows)
+
+                    # Process KeyStore sheet
+                    key_store_data = pd.read_excel(file_path, sheet_name='KeyStore', header=1)
+                    if 'WorkflowName' in key_store_data.columns:
+                        keyname_entries = []
+                        for _, row in key_store_data.iterrows():
+                            workflow_name = str(row['WorkflowName'])
+                            if workflow_name not in workflow_names_from_appstore:
+                                key_store_workflows.add(workflow_name)
+                                continue
+
+                            if 'Keyname' in row and 'Layout' in row and 'Remarks' in row:
+                                workflow = session.query(Workflow).filter_by(workflow_name=workflow_name).first()
+                                if workflow:
+                                    existing_key_mapping = session.query(KeyNameMapping).filter_by(
+                                        workflow_id=workflow.id,
+                                        activity_key_name=row['Keyname'],
+                                        activity_key_layout=row['Layout'],
+                                        remarks=row['Remarks'],
+                                        is_active=True
+                                    ).first()
+                                    
+                                    if existing_key_mapping:
+                                        results['KeyStore'].append(f"Duplicate: {workflow_name} - {row['Keyname']}")
+                                        continue
+                                    
+                                    keyname_entries.append(KeyNameMapping(
+                                        workflow_id=workflow.id,
+                                        activity_key_name=row['Keyname'],
+                                        activity_key_layout=row['Layout'],
+                                        remarks=row['Remarks'],
+                                        is_active=True,
+                                        created_date=datetime.utcnow()
+                                    ))
+                                    results['KeyStore'].append(f"Inserted: {workflow_name} - {row['Keyname']}")
+                                else:
+                                    results['KeyStore'].append(f"Missing Workflow: {workflow_name}")
+
+                        if keyname_entries:
+                            session.bulk_save_objects(keyname_entries)
+
+                    # Process VolumeStore sheet
+                    volume_store_data = pd.read_excel(file_path, sheet_name='VolumeStore', header=1)
+                    if 'WorkflowName' in volume_store_data.columns:
+                        volume_entries = []
+                        for _, row in volume_store_data.iterrows():
+                            workflow_name = str(row['WorkflowName'])
+                            if workflow_name not in workflow_names_from_appstore:
+                                volume_store_workflows.add(workflow_name)
+                                continue
+
+                            if 'ProcessName' in row and 'Pattern' in row and 'KeyName' in row:
+                                workflow = session.query(Workflow).filter_by(workflow_name=workflow_name).first()
+                                if workflow:
+                                    process_name = str(row['ProcessName'])
+                                    
+                                    max_pattern = session.query(func.max(VolumeMatrix.pattern)).filter(
+                                        VolumeMatrix.workflow_id == workflow.id,
+                                        VolumeMatrix.process_name == process_name,
+                                        VolumeMatrix.is_active == True
+                                    ).scalar() or 0
+                                    
+                                    pattern = row['Pattern']
+                                    key_name = row['KeyName']
+                                    layout = row['Layout']
+                                    key_type = row['Type']
+                                    volume_type = row.get('VolumeType')
+                                    field_name = row.get('FieldName')
+                                    field_layout = row.get('FieldLayout')
+                                    status = row.get('Status')
+                                    selected_value = row.get('SelectedValue', 'no') == 'yes'
+
+                                    existing_entry = session.query(VolumeMatrix).filter(
+                                        VolumeMatrix.workflow_id == workflow.id,
+                                        VolumeMatrix.process_name == process_name,
+                                        VolumeMatrix.activity_key_name == key_name,
+                                        VolumeMatrix.activity_key_layout == layout,
+                                        VolumeMatrix.activity_key_type == key_type,
+                                        VolumeMatrix.is_active == True
+                                    ).first()
+                                    
+                                    if existing_entry:
+                                        results['VolumeStore'].append(f"Duplicate: {workflow_name} - {key_name} - {layout} - {key_type}")
+                                        continue
+
+                                    if not pattern or not key_name or not layout:
+                                        results['VolumeStore'].append(f"Invalid data: {workflow_name} - {key_name} - {layout} - {key_type}")
+                                        continue
+
+                                    volume_entries.append(VolumeMatrix(
+                                        workflow_id=workflow.id,
+                                        process_name=process_name,
+                                        pattern=max_pattern + 1,
+                                        activity_key_name=key_name,
+                                        activity_key_layout=layout,
+                                        activity_key_type=key_type,
+                                        volume_type=volume_type,
+                                        is_value=selected_value,
+                                        field_name=field_name,
+                                        field_layout=field_layout,
+                                        status=status,
+                                        created_date=datetime.utcnow(),
+                                        created_by=request.headers.get('Createdby', 'unknown'),
+                                        is_active=True,
+                                    ))
+                                    results['VolumeStore'].append(f"Inserted: {workflow_name} - {key_name} - {layout} - {key_type}")
+                                else:
+                                    results['VolumeStore'].append(f"Missing Workflow: {workflow_name}")
+
+                        if volume_entries:
+                            session.bulk_save_objects(volume_entries)
+
+                    if key_store_workflows or volume_store_workflows:
+                        missing_workflows_info = {
+                            'KeyStore': list(key_store_workflows),
+                            'VolumeStore': list(volume_store_workflows)
+                        }
+                        results['MissingWorkflows'] = missing_workflows_info
+                        return jsonify(results), 400
+
+                    session.commit()
+                    return jsonify(results), 201
+
+            except Exception as e:
+                return jsonify({'message': str(e)}), 500
+        else:
+            return jsonify({'message': 'Invalid file type'}), 400
+
+api.add_resource(UploadResource, '/')
+
+
+
+
+
+
+
+
+
+
+
+
+
+-----------
+------------------
+--------------------------
+
+
+
+
 
 from flask import Blueprint, request, jsonify
 from flask_restful import Api, Resource
