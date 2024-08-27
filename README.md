@@ -1,4 +1,129 @@
 
+In your case, where roles and permissions are driven by Azure Active Directory (AAD) groups and there's no admin interface for manual changes, you need a system where roles and permissions are dynamically assigned based on AAD groups and managed through existing AAD mechanisms. Here’s how you can set it up:
+
+### **1. Database Schema Design**
+
+Even without an admin interface, you need tables to store roles, permissions, and their mappings. These tables should be designed to accommodate the automatic assignment of roles and permissions based on AAD groups.
+
+#### **Tables and Example Data**
+
+1. **`Roles` Table**:
+   - Stores different application roles.
+   ```plaintext
+   Roles
+   -----
+   RoleID (PK) | RoleName
+   ----------- | ----------
+   1           | Admin
+   2           | User
+   3           | Reviewer
+   ```
+
+2. **`Permissions` Table**:
+   - Stores various permissions that can be assigned to roles.
+   ```plaintext
+   Permissions
+   -----------
+   PermissionID (PK) | PermissionName
+   ----------------- | ----------------
+   1                 | view_dashboard
+   2                 | edit_user
+   3                 | approve_request
+   ```
+
+3. **`RolePermissions` Table**:
+   - Maps roles to permissions.
+   ```plaintext
+   RolePermissions
+   ---------------
+   RoleID (FK) | PermissionID (FK)
+   ----------  | -----------------
+   1           | 1
+   1           | 2
+   2           | 1
+   3           | 3
+   ```
+
+4. **`RoleADGroupMapping` Table**:
+   - Maps AAD groups to application roles. This helps in automatically assigning roles based on group membership.
+   ```plaintext
+   RoleADGroupMapping
+   -------------------
+   RoleID (FK) | ADGroupID
+   ----------  | ----------
+   1           | AADGroup1
+   2           | AADGroup2
+   3           | AADGroup3
+   ```
+
+5. **`UserRoles` Table**:
+   - Stores user roles assigned based on their AAD group memberships.
+   ```plaintext
+   UserRoles
+   ---------
+   UserID (PK) | RoleID (FK)
+   ----------  | ----------
+   user1       | 1
+   user2       | 2
+   user3       | 3
+   ```
+
+### **2. Data Flow and Automatic Role Assignment**
+
+Here’s how you can handle roles and permissions assignment based on AAD groups:
+
+1. **User Login and Group Retrieval**:
+   - When a user logs in, retrieve their AAD group memberships using Microsoft Graph API.
+
+2. **Determine User Roles**:
+   - For each AAD group the user belongs to, find the corresponding role using the `RoleADGroupMapping` table.
+   - Assign these roles to the user in the `UserRoles` table.
+
+3. **Check Permissions**:
+   - When checking permissions for a user, retrieve their roles from the `UserRoles` table.
+   - Fetch the associated permissions using the `RolePermissions` table.
+
+### **3. Example Workflow**
+
+**User Logs In**:
+   1. **Retrieve AAD Groups**: Fetch the groups the user belongs to via Microsoft Graph API.
+   2. **Map AAD Groups to Roles**: Use `RoleADGroupMapping` to find roles associated with the user's AAD groups.
+   3. **Assign Roles to User**: Store the user's roles in the `UserRoles` table.
+
+**Permission Check**:
+   1. **Retrieve User Roles**: From `UserRoles`, find the roles assigned to the user.
+   2. **Fetch Permissions**: Use `RolePermissions` to get permissions for those roles.
+   3. **Authorize Action**: Check if the user has the required permissions.
+
+### **4. Maintenance and Updates**
+
+- **Roles and Permissions Management**: Maintain roles and permissions in the database. Any changes to roles or permissions will require updates to the `Roles`, `Permissions`, and `RolePermissions` tables.
+- **AAD Group Management**: Update `RoleADGroupMapping` as new AAD groups and roles are added.
+
+### **Summary**
+
+1. **Database Tables**:
+   - `Roles`: Defines roles in your application.
+   - `Permissions`: Defines what each role can do.
+   - `RolePermissions`: Maps roles to permissions.
+   - `RoleADGroupMapping`: Maps AAD groups to roles.
+   - `UserRoles`: Stores user-role mappings.
+
+2. **Flow**:
+   - Retrieve user AAD groups and map them to roles.
+   - Assign roles to users and check their permissions dynamically.
+
+By using this approach, you can manage roles and permissions effectively without a manual admin interface, leveraging AAD for dynamic user management and role assignment.
+
+
+
+
+
+
+
+
+
+
 You're right; the AD group's names weren't explicitly defined in the example tables provided. To properly map AD groups to roles, we should introduce an additional table to explicitly manage the AD groups and their relationships with roles. Let me correct this and show you how AD groups can be incorporated.
 
 ### Revised Table Structure with AD Groups
