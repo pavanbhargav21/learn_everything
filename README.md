@@ -1,4 +1,115 @@
 
+You're right; the AD group's names weren't explicitly defined in the example tables provided. To properly map AD groups to roles, we should introduce an additional table to explicitly manage the AD groups and their relationships with roles. Let me correct this and show you how AD groups can be incorporated.
+
+### Revised Table Structure with AD Groups
+
+### 1. **ADGroups Table**
+**Table Name**: `ad_groups`
+| id  | name         | description               | created_at          | updated_at          |
+|-----|--------------|---------------------------|---------------------|---------------------|
+| 1   | AdminGroup   | Admins with full access    | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+| 2   | UserGroup    | Regular users             | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+| 3   | CheckerGroup | Users who approve requests | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+| 4   | MakerGroup   | Users who submit forms     | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+
+### 2. **Users Table**
+**Table Name**: `users`
+| id  | user_id       | name          | email              | country | created_at          | updated_at          |
+|-----|---------------|---------------|--------------------|---------|---------------------|---------------------|
+| 1   | jdoe          | John Doe      | jdoe@example.com   | USA     | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+| 2   | asmith        | Alice Smith   | asmith@example.com | UK      | 2024-01-02 11:00:00 | 2024-01-02 11:00:00 |
+| 3   | bwhite        | Bob White     | bwhite@example.com | India   | 2024-01-03 12:00:00 | 2024-01-03 12:00:00 |
+
+### 3. **Roles Table**
+**Table Name**: `roles`
+| id  | name       | description                  | created_at          | updated_at          |
+|-----|------------|------------------------------|---------------------|---------------------|
+| 1   | Admin      | Full access to all features   | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+| 2   | Maker      | Can submit forms and requests | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+| 3   | Checker    | Can approve requests          | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+| 4   | Viewer     | Read-only access              | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+
+### 4. **Permissions Table**
+**Table Name**: `permissions`
+| id  | name              | description                             | created_at          | updated_at          |
+|-----|-------------------|-----------------------------------------|---------------------|---------------------|
+| 1   | view_dashboard    | Can view the dashboard                  | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+| 2   | submit_form       | Can submit forms                        | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+| 3   | approve_request   | Can approve submitted requests          | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+| 4   | edit_settings     | Can modify application settings         | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+| 5   | view_reports      | Can view generated reports              | 2024-01-01 10:00:00 | 2024-01-01 10:00:00 |
+
+### 5. **RolePermissions Table**
+**Table Name**: `role_permissions`
+| id  | role_id | permission_id | 
+|-----|---------|---------------|
+| 1   | 1       | 1             | 
+| 2   | 1       | 2             | 
+| 3   | 1       | 3             | 
+| 4   | 1       | 4             | 
+| 5   | 2       | 2             | 
+| 6   | 3       | 3             | 
+| 7   | 4       | 1             | 
+| 8   | 4       | 5             | 
+
+### 6. **UserRoles Table**
+**Table Name**: `user_roles`
+| id  | user_id | role_id | assigned_via_ad_group | 
+|-----|---------|---------|-----------------------|
+| 1   | 1       | 1       | True                  | 
+| 2   | 2       | 3       | True                  | 
+| 3   | 3       | 2       | True                  | 
+| 4   | 1       | 4       | False                 | 
+
+### 7. **ADGroupRoles Table**
+**Table Name**: `ad_group_roles`
+| id  | ad_group_id | role_id |
+|-----|-------------|---------|
+| 1   | 1           | 1       |
+| 2   | 2           | 4       |
+| 3   | 3           | 3       |
+| 4   | 4           | 2       |
+
+### 8. **UserSession Table**
+**Table Name**: `user_sessions`
+| id  | user_id | login_time          | logout_time         | is_active | is_blacklisted | session_token                      |
+|-----|---------|---------------------|---------------------|-----------|----------------|------------------------------------|
+| 1   | 1       | 2024-01-05 09:00:00 | 2024-01-05 17:00:00 | False     | False          | abc123xyz                           |
+| 2   | 2       | 2024-01-05 09:30:00 | NULL                | True      | False          | def456uvw                           |
+| 3   | 3       | 2024-01-05 10:00:00 | NULL                | True      | False          | ghi789rst                           |
+
+### Mapping Example
+
+- **ADGroups Table**: Defines the names and descriptions of AD groups.
+  - `AdminGroup`: Admins with full access.
+  - `UserGroup`: Regular users.
+  - `CheckerGroup`: Users who approve requests.
+  - `MakerGroup`: Users who submit forms.
+
+- **ADGroupRoles Table**: Maps AD groups to roles.
+  - `AdminGroup` (ID: 1) is mapped to the `Admin` role (ID: 1).
+  - `UserGroup` (ID: 2) is mapped to the `Viewer` role (ID: 4).
+  - `CheckerGroup` (ID: 3) is mapped to the `Checker` role (ID: 3).
+  - `MakerGroup` (ID: 4) is mapped to the `Maker` role (ID: 2).
+
+- **UserRoles Table**: Maps users to roles based on their AD group memberships.
+  - **John Doe** (`user_id: 1`) belongs to `AdminGroup`, so he is assigned the `Admin` role via `ad_group_roles`. He is also assigned the `Viewer` role directly (manually).
+
+This structure ensures that:
+- Users are assigned roles based on their AD group memberships.
+- AD groups can be easily updated without having to modify user-specific data.
+- Permissions are linked to roles, which are linked to AD groups, simplifying the management of user access across different countries or organizational units.
+
+
+
+
+
+
+
+
+
+
+
 
 Based on your requirements, I’ll outline the database tables needed for handling user roles, permissions, and session management, including the necessary columns and how they map together. Here's how you can structure your database:
 
