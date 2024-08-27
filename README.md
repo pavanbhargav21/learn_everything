@@ -1,4 +1,114 @@
 
+
+Based on your requirements, I’ll outline the database tables needed for handling user roles, permissions, and session management, including the necessary columns and how they map together. Here's how you can structure your database:
+
+### 1. **Users Table**
+   - **Purpose**: Store basic user information along with their associated AD groups.
+   - **Table Name**: `users`
+   - **Columns**:
+     - `id` (Primary Key, Auto-increment)
+     - `user_id` (VARCHAR, Unique): The user's ID (e.g., email or username).
+     - `name` (VARCHAR): The user's full name.
+     - `email` (VARCHAR): The user's email address.
+     - `country` (VARCHAR): The user's country (optional, for country-based roles).
+     - `ad_groups` (VARCHAR): A comma-separated list of AD groups the user belongs to.
+     - `created_at` (TIMESTAMP): When the user was added to the system.
+     - `updated_at` (TIMESTAMP): When the user’s record was last updated.
+
+### 2. **Roles Table**
+   - **Purpose**: Define roles that can be assigned to users, either directly or through AD groups.
+   - **Table Name**: `roles`
+   - **Columns**:
+     - `id` (Primary Key, Auto-increment)
+     - `name` (VARCHAR, Unique): The name of the role (e.g., "Admin", "Maker", "Checker").
+     - `description` (TEXT): A brief description of the role.
+     - `created_at` (TIMESTAMP): When the role was created.
+     - `updated_at` (TIMESTAMP): When the role was last updated.
+
+### 3. **Permissions Table**
+   - **Purpose**: Define the permissions that can be granted to roles, allowing fine-grained control over what each role can do.
+   - **Table Name**: `permissions`
+   - **Columns**:
+     - `id` (Primary Key, Auto-increment)
+     - `name` (VARCHAR, Unique): The name of the permission (e.g., "view_dashboard", "submit_form").
+     - `description` (TEXT): A brief description of the permission.
+     - `created_at` (TIMESTAMP): When the permission was created.
+     - `updated_at` (TIMESTAMP): When the permission was last updated.
+
+### 4. **RolePermissions Table**
+   - **Purpose**: Map roles to permissions, defining what actions each role is allowed to perform.
+   - **Table Name**: `role_permissions`
+   - **Columns**:
+     - `id` (Primary Key, Auto-increment)
+     - `role_id` (Foreign Key to `roles.id`)
+     - `permission_id` (Foreign Key to `permissions.id`)
+
+### 5. **UserRoles Table**
+   - **Purpose**: Assign roles to users. This can be done either directly or through their AD group memberships.
+   - **Table Name**: `user_roles`
+   - **Columns**:
+     - `id` (Primary Key, Auto-increment)
+     - `user_id` (Foreign Key to `users.id`)
+     - `role_id` (Foreign Key to `roles.id`)
+     - `assigned_via_ad_group` (BOOLEAN): Indicates if the role was assigned via an AD group.
+
+### 6. **UserSession Table**
+   - **Purpose**: Track user sessions, including when they log in and out, and whether they are currently active or blacklisted.
+   - **Table Name**: `user_sessions`
+   - **Columns**:
+     - `id` (Primary Key, Auto-increment)
+     - `user_id` (Foreign Key to `users.id`)
+     - `login_time` (TIMESTAMP): When the user logged in.
+     - `logout_time` (TIMESTAMP, Nullable): When the user logged out.
+     - `is_active` (BOOLEAN): Whether the session is currently active.
+     - `is_blacklisted` (BOOLEAN): Whether the user is blacklisted from logging in.
+     - `session_token` (VARCHAR, Unique): The session token for the current login session.
+
+### Mapping and Implementation
+
+- **User and Roles Mapping**: When a user logs in, their AD groups are checked, and roles are assigned based on those groups. These roles are mapped in the `user_roles` table. You can also assign roles directly to users if necessary.
+
+- **Role and Permissions Mapping**: The `role_permissions` table maps each role to specific permissions, defining what actions each role can perform in the application.
+
+- **Authorization Logic**:
+  - When a user attempts to access a feature or API, check the user’s roles (from `user_roles`) and their associated permissions (from `role_permissions`).
+  - If the user has the required permission, they are allowed access; otherwise, they are denied.
+
+- **Handling Country-Specific Roles**: You can add logic that assigns roles based on the `country` field in the `users` table. For instance, users from a specific country can be assigned additional roles automatically.
+
+- **Session Management**: The `user_sessions` table tracks login and logout times. You can use this to manage active sessions and enforce session timeouts or blacklist users if necessary.
+
+### Workflow:
+
+1. **User Login**: 
+   - Retrieve or create the user in the `users` table.
+   - Fetch the user's AD groups.
+   - Map these groups to roles using the `user_roles` table.
+   - Start a session and record it in the `user_sessions` table.
+
+2. **Role Assignment**:
+   - Assign roles directly or via AD groups, then map these roles to specific permissions.
+
+3. **Authorization Check**:
+   - For each action (e.g., API call or page access), check if the user’s roles grant them the necessary permissions.
+   - Deny access if the user lacks the required permissions.
+
+### Example Flow:
+
+- A user logs in, and their AD groups are checked.
+- Based on the groups, roles are assigned (e.g., "Maker", "Checker").
+- These roles are mapped to permissions like "submit_form" or "approve_workflow".
+- When the user tries to submit a form, the application checks if they have the "submit_form" permission via their roles.
+- If yes, the action proceeds; otherwise, access is denied.
+
+This approach gives you flexibility in managing user permissions, handling different AD group structures, and supporting country-specific roles or permissions.
+
+
+
+
+
+
+
 from flask import Blueprint, request, jsonify
 from flask_restful import Api, Resource
 from flask_cors import cross_origin
