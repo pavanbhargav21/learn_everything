@@ -1,4 +1,189 @@
 
+
+You're correct that the `workflow_id` check should be performed before launching the `ThreadPoolExecutor`. This allows us to confirm that the `workflow_id` exists (or create it if necessary) before running the parallel overlap checks. Once we have the `workflow_id`, it can be passed to the functions within the `ThreadPoolExecutor` to ensure the checks are conducted properly.
+
+Here's how you can modify the code:
+
+1. **Retrieve or Create `workflow_id`**: Before launching the `ThreadPoolExecutor`, the `workflow_id` should be fetched from the database. If it doesn't exist, a new `workflow_id` should be created.
+
+2. **Pass `workflow_id`**: Once the `workflow_id` is confirmed, pass it into the functions that are executed in parallel using `ThreadPoolExecutor`.
+
+3. **Integrate with the Session Scope**: Ensure that the session is properly managed by the context manager and passed to the functions executed by the threads.
+
+### Updated Code
+
+```python
+from flask import request, jsonify
+from flask_jwt_extended import jwt_required
+from concurrent.futures import ThreadPoolExecutor
+from models import Whitelist, WhiteListStoreConfigRequests, Workflow, WhiteListAppStoreRequest
+from app import session_scope
+import validators
+from datetime import datetime
+
+@cross_origin()
+@jwt_required()
+def post(self):
+    data = request.get_json()
+    created_By = request.headers.get('Createdby')
+
+    if not created_By:
+        return {'message': "Missing CreatedBy header"}, 400
+
+    if not validators.url(data['url']):
+        return jsonify({'message': 'Invalid URL'}), 400
+
+    titles = [title.strip() for title in data['titles'].split(',')]
+    if len(titles) < 2:
+        return jsonify({'message': 'At least two page titles are required'}), 400
+
+    with session_scope('DESIGNER') as session:
+        # Step 1: Fetch or create the workflow ID
+        workflow_name = data.get('workflow_name')
+        workflow = session.query(Workflow).filter_by(name=workflow_name).first()
+
+        if not workflow:
+            # If workflow doesn't exist, create a new one
+            workflow = Workflow(name=workflow_name)
+            session.add(workflow)
+            session.flush()  # Flush to get the new workflow ID
+
+        workflow_id = workflow.id  # Now we have the workflow ID
+
+        # Step 2: Define the overlap check functions
+        def check_whitelist_entry(session, workflow_id):
+            return session.query(Whitelist).filter_by(
+                workflow_url=data['url'],
+                environment=data['environment'],
+                workflow_id=workflow_id,
+                window_titles=data['titles']
+            ).first()
+
+        def check_config_requests_entry(session, workflow_id):
+            return session.query(WhiteListStoreConfigRequests).filter_by(
+                WorkflowURL=data['url'],
+                Environment=data['environment'],
+                WorkflowID=workflow_id,
+                WindowTitle=data['titles']
+            ).first()
+
+        def check_whitelist_overlap(session):
+            existing_whitelists = session.query(Whitelist).filter(Whitelist.is_active == True).all()
+            existing_titles = set()
+
+            for wl in existing_whitelists:
+                ex_titles = set(title.strip() for title in wl.window_titles.split(','))
+                existing_titles.update(ex_titles)
+
+            overlap = existing_titles & set(titles)
+            return overlap
+
+        def check_config_requests_overlap(session):
+            existing_requests = session.query(WhiteListStoreConfigRequests).filter(WhiteListStoreConfigRequests.IsActive == True).all()
+            existing_titles = set()
+
+            for wl in existing_requests:
+                ex_titles = set(title.strip() for title in wl.WindowTitle.split(','))
+                existing_titles.update(ex_titles)
+
+            overlap = existing_titles & set(titles)
+            return overlap
+
+        # Step 3: Execute the overlap checks concurrently
+        with ThreadPoolExecutor() as executor:
+            # Run all checks concurrently
+            future_whitelist = executor.submit(check_whitelist_entry, session, workflow_id)
+            future_config_requests = executor.submit(check_config_requests_entry, session, workflow_id)
+            future_whitelist_overlap = executor.submit(check_whitelist_overlap, session)
+            future_config_requests_overlap = executor.submit(check_config_requests_overlap, session)
+
+            # Get results
+            whitelist_result = future_whitelist.result()
+            config_requests_result = future_config_requests.result()
+            whitelist_overlap = future_whitelist_overlap.result()
+            config_requests_overlap = future_config_requests_overlap.result()
+
+            # Check for existence
+            if whitelist_result:
+                return jsonify({'message': 'Whitelist Entry Already Exists in main app store'}), 400
+
+            if config_requests_result:
+                return jsonify({
+                    'message': f'Entry exists in WhiteListStoreConfigRequests with Request ID: {config_requests_result.RequestId}',
+                }), 400
+
+            # Check for overlap
+            if whitelist_overlap or config_requests_overlap:
+                overlap_titles = whitelist_overlap | config_requests_overlap
+                return jsonify({
+                    'message': f'One or more window titles already exist with another workflow: {", ".join(overlap_titles)}'
+                }), 400
+
+            # No conflicts, proceed with creating the request
+            new_request = WhiteListAppStoreRequest(
+                Count=1,
+                Approver1=None,
+                Approver2=None,
+                Approver1Email=None,
+                Approver2Email=None,
+                RequestCreatedDate=datetime.utcnow(),
+                RequestSendDate=None,
+                ApproverActionDate=None,
+                ModifiedDate=datetime.utcnow(),
+                StatusCreatedBy=created_By,
+                IsActive=True
+            )
+            session.add(new_request)
+            session.flush()  # Commit to get the new RequestId
+
+            new_whitelist_config = WhiteListStoreConfigRequests(
+                RequestId=new_request.RequestId,
+                WorkflowID=workflow_id,
+                SerialNumber=None,
+                WorkflowName=workflow_name,
+                WorkflowURL=data['url'],
+                Environment=data['environment'],
+                IsActive=True,
+                Status_AR='Open',
+                ModifiedDate=datetime.utcnow(),
+                WindowTitle=data['titles'],
+                IsFullImageCapture=data.get('screenCapture', 'no') == 'yes',
+                IsMaxTab=data.get('maxTab', 'no') == 'yes'
+            )
+            session.add(new_whitelist_config)
+
+            return jsonify({'message': 'Whitelist request created successfully', 'request_id': new_request.RequestId}), 201
+```
+
+### Key Changes:
+
+1. **Workflow ID Retrieval or Creation**:
+    - We first check if the `workflow_name` exists. If not, we create it and retrieve the `workflow_id`.
+
+2. **Passing `workflow_id`**:
+    - The `workflow_id` is then passed into the `ThreadPoolExecutor` tasks that check for existing entries and overlaps.
+
+3. **Session Scope Management**:
+    - The session is opened at the start, the `ThreadPoolExecutor` tasks are executed within that context, and results are aggregated accordingly.
+
+### Workflow and Overlap Validation Flow:
+
+- **Workflow Validation**: Ensures that a valid `workflow_id` exists before any parallel checks.
+- **Parallel Overlap Checks**: These checks ensure that window titles don't overlap across both the `Whitelist` and `WhiteListStoreConfigRequests` tables.
+- **Decision Making**: Based on the results of the parallel checks, the process either continues to create a new request or returns an appropriate error message.
+
+This approach maintains concurrency for checking the overlap, thus optimizing the process while ensuring the correctness of operations by handling workflow validation upfront.
+
+
+
+
+
+
+
+
+
+
+
 The solution provided is generally efficient for the concurrent checking of two tables. However, depending on your specific use case and the scale of your data, there are a few additional optimizations and considerations you might explore:
 
 ### 1. **Indexing**
