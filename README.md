@@ -1,4 +1,114 @@
 
+Thank you for clarifying. I now understand that the statuses you're concerned with are already provided in the payload. Based on these statuses, you need to update the status of the `request_id` in another table. Here's how to properly handle this:
+
+### Revised Implementation
+
+Given that you have the statuses in the payload, you can directly determine the overall status without querying the database again. You'll only query the database to update the request's status based on the statuses provided.
+
+Here’s how you can implement it:
+
+```python
+from sqlalchemy import update
+
+class WhitelistMakerResource(Resource):
+    @cross_origin()
+    @jwt_required()
+    def put(self):
+        try:
+            # Step 1: Parse the Incoming Payload
+            data = request.get_json()
+            request_id = data.get('request_id')
+            updates = data.get('data', [])
+
+            if not request_id:
+                return jsonify({'message': 'Missing request_id'}), 400
+
+            if not updates or not isinstance(updates, list):
+                return jsonify({'message': 'Invalid or missing data'}), 400
+
+            with session_scope('DESIGNER') as session:
+                # Step 2: Extract the statuses from the payload
+                statuses = [item['status'] for item in updates if 'id' in item and 'status' in item]
+
+                if not statuses:
+                    return jsonify({'message': 'No valid updates found in the payload'}), 400
+
+                # Step 3: Determine the overall request status based on the payload statuses
+                if all(status == 'approved' for status in statuses):
+                    overall_status = 'approved'
+                elif all(status == 'rejected' for status in statuses):
+                    overall_status = 'rejected'
+                else:
+                    # If there's a mix of 'approved' and 'rejected'
+                    approved_count = statuses.count('approved')
+                    rejected_count = statuses.count('rejected')
+
+                    if approved_count > 0 and rejected_count > 0:
+                        overall_status = 'partially approved/rejected'
+                    elif approved_count > rejected_count:
+                        overall_status = 'partially approved'
+                    else:
+                        overall_status = 'partially rejected'
+
+                # Step 4: Update the individual records
+                stmt = (
+                    update(WhitelistStoreConfigRequests)
+                    .where(WhitelistStoreConfigRequests.id.in_([item['id'] for item in updates]))
+                    .values(
+                        status=case(
+                            [
+                                (WhitelistStoreConfigRequests.id == item['id'], item['status'])
+                                for item in updates
+                            ],
+                            else_=WhitelistStoreConfigRequests.status
+                        ),
+                        modified_date=datetime.utcnow()
+                    )
+                )
+                session.execute(stmt)
+
+                # Step 5: Update the request status in WhitelistStoreRequests table
+                request_update_stmt = (
+                    update(WhitelistStoreRequests)
+                    .where(WhitelistStoreRequests.id == request_id)
+                    .values(
+                        status=overall_status,
+                        modified_date=datetime.utcnow()
+                    )
+                )
+                session.execute(request_update_stmt)
+
+                # Step 6: Commit the Transaction
+                session.commit()
+
+            return jsonify({'message': 'Records updated successfully'}), 200
+
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': 'An internal server error occurred'}), 500
+```
+
+### Explanation:
+
+1. **Extract Statuses from Payload**: The statuses are directly extracted from the payload. You do not need to query the database for these, as they are provided by the frontend.
+
+2. **Determine Overall Status**:
+   - If all statuses in the payload are "approved," set the overall status to "approved."
+   - If all are "rejected," set the status to "rejected."
+   - If there's a mix of "approved" and "rejected," determine the appropriate overall status (e.g., "partially approved/rejected").
+
+3. **Update Individual Records**: The individual records in the `WhitelistStoreConfigRequests` table are updated in bulk using the `update()` statement. 
+
+4. **Update the Request's Status**: After determining the overall status, you update the status of the `request_id
+
+
+
+
+
+
+
+
+
 from sqlalchemy import update
 
 class WhitelistMakerResource(Resource):
