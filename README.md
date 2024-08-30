@@ -1,4 +1,56 @@
 
+from sqlalchemy import update
+
+class WhitelistMakerResource(Resource):
+    # Existing GET and POST methods...
+
+    @cross_origin()
+    @jwt_required()
+    def put(self):
+        try:
+            # Step 1: Parse the Incoming Payload
+            data = request.get_json()
+            request_id = data.get('request_id')
+            updates = data.get('data', [])
+
+            if not request_id:
+                return jsonify({'message': 'Missing request_id'}), 400
+
+            if not updates or not isinstance(updates, list):
+                return jsonify({'message': 'Invalid or missing data'}), 400
+
+            with session_scope('DESIGNER') as session:
+                # Step 2: Prepare the Update Statements
+                # Extract the IDs and corresponding statuses from the payload
+                id_status_map = {item['id']: item['status'] for item in updates if 'id' in item and 'status' in item}
+
+                if not id_status_map:
+                    return jsonify({'message': 'No valid updates found in the payload'}), 400
+
+                # Step 3: Perform the Bulk Update in a Single Query
+                stmt = (
+                    update(WhitelistStoreConfigRequests)
+                    .where(WhitelistStoreConfigRequests.id.in_(id_status_map.keys()))
+                    .values(
+                        status=func.coalesce(id_status_map[WhitelistStoreConfigRequests.id], WhitelistStoreConfigRequests.status),
+                        modified_date=datetime.utcnow()
+                    )
+                )
+
+                session.execute(stmt)
+
+                # Step 4: Commit the Transaction
+                session.commit()
+
+            return jsonify({'message': 'Records updated successfully'}), 200
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': 'An internal server error occurred'}), 500
+
+
+
+
+
 
 You're correct that the `workflow_id` check should be performed before launching the `ThreadPoolExecutor`. This allows us to confirm that the `workflow_id` exists (or create it if necessary) before running the parallel overlap checks. Once we have the `workflow_id`, it can be passed to the functions within the `ThreadPoolExecutor` to ensure the checks are conducted properly.
 
