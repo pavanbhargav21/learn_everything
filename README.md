@@ -1,4 +1,123 @@
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+@cross_origin()
+@jwt_required()
+def post(self):
+    data = request.get_json()
+    created_By = request.headers.get('Createdby')
+    
+    if not created_By:
+        return {'message': "Missing CreatedBy header"}, 400
+
+    workflow_id = data['workflowId']
+    process_name = data['processName']
+    fields = data['fields']
+
+    # Step 1: Check for unique keyNames within the provided fields
+    seen_keynames = set()
+    for field in fields:
+        key_name = field['keyName']
+        if key_name in seen_keynames:
+            return {"message": f"Duplicate keyName '{key_name}' in the provided fields"}, 400
+        seen_keynames.add(key_name)
+
+    entries_to_check = [
+        (workflow_id, process_name, field['keyName'], field['layout'])
+        for field in fields
+    ]
+
+    def check_existing_entries_in_mapping():
+        with session_scope('DESIGNER') as session:
+            return session.query(
+                KeyNameMapping.workflow_id, KeyNameMapping.process_name, KeyNameMapping.activity_key_name, KeyNameMapping.activity_key_layout
+            ).filter(
+                or_(*[
+                    and_(
+                        KeyNameMapping.workflow_id == entry[0],
+                        KeyNameMapping.process_name == entry[1],
+                        KeyNameMapping.activity_key_name == entry[2],
+                        KeyNameMapping.activity_key_layout == entry[3]
+                    )
+                    for entry in entries_to_check
+                ])
+            ).all()
+
+    def check_existing_entries_in_config_request():
+        with session_scope('DESIGNER') as session:
+            return session.query(
+                KeyNameStoreConfigRequest.workflow_id, KeyNameStoreConfigRequest.process_name, KeyNameStoreConfigRequest.activity_key_name, KeyNameStoreConfigRequest.activity_key_layout
+            ).filter(
+                or_(*[
+                    and_(
+                        KeyNameStoreConfigRequest.workflow_id == entry[0],
+                        KeyNameStoreConfigRequest.process_name == entry[1],
+                        KeyNameStoreConfigRequest.activity_key_name == entry[2],
+                        KeyNameStoreConfigRequest.activity_key_layout == entry[3]
+                    )
+                    for entry in entries_to_check
+                ])
+            ).all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        # Step 2: Execute both database queries concurrently
+        futures = {
+            executor.submit(check_existing_entries_in_mapping): "mapping",
+            executor.submit(check_existing_entries_in_config_request): "config_request"
+        }
+
+        results = {
+            "mapping": [],
+            "config_request": []
+        }
+
+        for future in as_completed(futures):
+            result_key = futures[future]
+            try:
+                results[result_key] = future.result()
+            except Exception as e:
+                return {"message": f"Error during database query: {str(e)}"}, 500
+
+    # Convert results to sets for quick lookup
+    existing_set = set(results["mapping"])
+    config_request_set = set(results["config_request"])
+
+    # Prepare new entries
+    new_entries = [
+        KeyNameMapping(
+            workflow_id=workflow_id,
+            process_name=process_name,
+            activity_key_name=field['keyName'],
+            activity_key_layout=field['layout'],
+            remarks=field['remarks'],
+            created_by=created_By,
+            created_date=datetime.utcnow()
+        )
+        for field in fields
+    ]
+
+    # Step 3: Filter out entries that already exist in either table
+    filtered_new_entries = [
+        entry for entry in new_entries
+        if (entry.workflow_id, entry.process_name, entry.activity_key_name, entry.activity_key_layout) not in existing_set
+        and (entry.workflow_id, entry.process_name, entry.activity_key_name, entry.activity_key_layout) not in config_request_set
+    ]
+
+    # Step 4: Handle duplicates or conflicts
+    if len(filtered_new_entries) < len(new_entries):
+        return {"message": "One or more key name mappings already exist in the database or pending approval"}, 400
+
+    with session_scope('DESIGNER') as session:
+        # Step 5: Bulk save all valid new entries
+        if filtered_new_entries:
+            session.bulk_save_objects(filtered_new_entries)
+
+    return {"message": "Key name mappings added successfully"}, 201
+
+
+
+
+
 It looks like you want to create a similar set of resources for managing `KeyStoreRequests` and `KeyStoreConfigRequests` based on the logic from the `WhitelistMaker` resource. To move forward, I’ll help you adapt the structure and methods, while ensuring the checks and table references align with the `KeyNameMapping` requirements. 
 
 I'll guide you through the key steps:
