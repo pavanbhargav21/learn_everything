@@ -1,4 +1,153 @@
 
+I understand the requirement you're describing. To clarify, you're aiming to ensure the following steps are followed in the process:
+
+### High-Level Overview:
+1. **Initial Checks:**
+   - Validate that all `keyNames` within the provided fields are unique.
+   - Check whether each `keyName` exists in either the `KeyNameMapping` or `KeyNameStoreConfigRequest` tables.
+
+2. **Request Creation:**
+   - If all checks pass, create a new entry in the `KeyNameStoreRequest` table.
+   - The new request should contain the total count of `keyNames` (e.g., 10 if there are 10 `keyNames`), with other fields like `created_by`, `created_date`, `modified_date`, `is_active`, and `status` being set accordingly.
+
+3. **Sub-Entries Creation:**
+   - After the main request is created, create corresponding entries in the `KeyNameStoreConfigRequest` table for each `keyName` with the appropriate details.
+   - The status of these sub-entries should initially be set to "open".
+
+4. **Final Save:**
+   - Once everything is validated and prepared, bulk save the main request and all the sub-entries into their respective tables.
+
+### Implementation:
+
+Here's how you can achieve this:
+
+```python
+@cross_origin()
+@jwt_required()
+def post(self):
+    data = request.get_json()
+    created_by = request.headers.get('Createdby')
+    if not created_by:
+        return {'message': "Missing CreatedBy header"}, 400
+
+    workflow_id = data['workflowId']
+    process_name = data['processName']
+    fields = data['fields']
+
+    # Step 1: Check for unique keyNames within the provided fields
+    seen_keynames = set()
+    for field in fields:
+        key_name = field['keyName']
+        if key_name in seen_keynames:
+            return {"message": f"Duplicate keyName '{key_name}' in the provided fields"}, 400
+        seen_keynames.add(key_name)
+
+    with session_scope('DESIGNER') as session:
+        # Step 2: Prepare data for checking existing records
+        entries_to_check = [(workflow_id, process_name, field['keyName'], field['layout']) for field in fields]
+
+        # Step 3: Threaded checks across both tables
+        def check_existing_entries():
+            existing_entries_mapping = session.query(
+                KeyNameMapping.workflow_id, KeyNameMapping.process_name, 
+                KeyNameMapping.activity_key_name, KeyNameMapping.activity_key_layout
+            ).filter(
+                or_(*[
+                    and_(
+                        KeyNameMapping.workflow_id == entry[0],
+                        KeyNameMapping.process_name == entry[1],
+                        KeyNameMapping.activity_key_name == entry[2],
+                        KeyNameMapping.activity_key_layout == entry[3]
+                    )
+                    for entry in entries_to_check
+                ])
+            ).all()
+
+            existing_entries_config_request = session.query(
+                KeyNameStoreConfigRequest.workflow_id, KeyNameStoreConfigRequest.process_name, 
+                KeyNameStoreConfigRequest.activity_key_name, KeyNameStoreConfigRequest.activity_key_layout
+            ).filter(
+                or_(*[
+                    and_(
+                        KeyNameStoreConfigRequest.workflow_id == entry[0],
+                        KeyNameStoreConfigRequest.process_name == entry[1],
+                        KeyNameStoreConfigRequest.activity_key_name == entry[2],
+                        KeyNameStoreConfigRequest.activity_key_layout == entry[3]
+                    )
+                    for entry in entries_to_check
+                ])
+            ).all()
+
+            return existing_entries_mapping, existing_entries_config_request
+
+        # Perform the checks concurrently
+        existing_entries_mapping, existing_entries_config_request = check_existing_entries()
+
+        # Combine the existing entries from both tables
+        existing_set = set(existing_entries_mapping) | set(existing_entries_config_request)
+
+        # Step 4: Filter out any entries that already exist in the database
+        filtered_new_entries = [
+            entry for entry in entries_to_check
+            if (entry[0], entry[1], entry[2], entry[3]) not in existing_set
+        ]
+
+        # Step 5: Handle duplicates
+        if len(filtered_new_entries) < len(entries_to_check):
+            return {"message": "One or more key name mappings already exist in the database"}, 400
+
+        # Step 6: If all checks pass, create a new request in KeyNameStoreRequest
+        new_request = KeyNameStoreRequest(
+            request_count=len(fields),
+            created_by=created_by,
+            created_date=datetime.utcnow(),
+            modified_date=datetime.utcnow(),
+            is_active=True,
+            status='open'
+        )
+        session.add(new_request)
+        session.flush()  # Flush to get the new_request id
+
+        # Step 7: Create corresponding entries in KeyNameStoreConfigRequest
+        config_requests = [
+            KeyNameStoreConfigRequest(
+                request_id=new_request.id,
+                workflow_id=entry[0],
+                process_name=entry[1],
+                activity_key_name=entry[2],
+                activity_key_layout=entry[3],
+                remarks=next(field['remarks'] for field in fields if field['keyName'] == entry[2]),
+                is_active=True,
+                status='open'
+            )
+            for entry in filtered_new_entries
+        ]
+
+        # Step 8: Bulk save the new entries
+        if config_requests:
+            session.bulk_save_objects(config_requests)
+
+    return {"message": "Key name mappings added successfully"}, 201
+```
+
+### Key Points:
+1. **Initial Checks:** The `seen_keynames` set ensures there are no duplicates in the provided input.
+2. **Concurrent Checks:** The `check_existing_entries` function is designed to query both the `KeyNameMapping` and `KeyNameStoreConfigRequest` tables concurrently for existing records. This ensures that no duplicates exist in either table.
+3. **Request Creation:** If all the checks pass, a new `KeyNameStoreRequest` is created with the total count of `keyNames`.
+4. **Sub-Entries Creation:** Corresponding entries are created in the `KeyNameStoreConfigRequest` table, tied to the main request.
+5. **Bulk Save:** Finally, all the new entries are saved to the database.
+
+This approach ensures that all checks are performed before any entries are created, and it maintains consistency in your database. If any duplicates are found during the checks, no changes are made to the database, ensuring data integrity.
+
+
+
+
+
+
+
+
+
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 @cross_origin()
