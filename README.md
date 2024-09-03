@@ -1,4 +1,243 @@
 
+It looks like you want to create a similar set of resources for managing `KeyStoreRequests` and `KeyStoreConfigRequests` based on the logic from the `WhitelistMaker` resource. To move forward, I’ll help you adapt the structure and methods, while ensuring the checks and table references align with the `KeyNameMapping` requirements. 
+
+I'll guide you through the key steps:
+
+### 1. **Set Up the KeyStore Resources**
+
+Start by creating the `KeyStoreMakerResource`, `KeyStoreMakerStatusResource`, `KeyStoreMakerRequestIdResource`, and `KeyStoreMakerIdResource` classes, similar to how they are structured in `WhitelistMaker`. Each class will perform operations on `KeyStoreRequests` and `KeyStoreConfigRequests`.
+
+### 2. **Modify the `KeyStoreMakerResource`**
+
+This will handle `GET`, `POST`, and `PUT` requests for creating, retrieving, and updating key store entries.
+
+#### `get` Method:
+This method should retrieve `KeyStoreRequests` based on the `created_by` header.
+
+```python
+class KeyStoreMakerResource(Resource):
+    @jwt_required()
+    def get(self):
+        try:
+            created_By = request.headers.get('Createdby')
+            if not created_By:
+                return {'message': "Missing CreatedBy header"}, 400
+
+            with session_scope('DESIGNER') as session:
+                key_requests = session.query(KeyStoreRequests).filter_by(
+                        created_by=created_By,
+                        is_active=True
+                        ).all()
+                
+                data = [{
+                    'requestId': k.request_id,
+                    'count': k.count,
+                    'approver1': k.approver_1,
+                    'approver1Email': k.approver_1_email,
+                    'requestCreatedDate': k.req_created_date,
+                    'requestSentDate': k.req_sent_date,
+                    'approverActionDate': k.approver_action_date,
+                    'modifiedDate': k.modified_date,
+                    'status': k.status 
+                    } for k in key_requests]
+                
+            return jsonify(data)
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+```
+
+#### `post` Method:
+This method will handle the creation of a new key store entry, ensuring no duplicates and validating the inputs.
+
+```python
+@cross_origin()
+@jwt_required()
+def post(self):
+    try:
+        data = request.get_json()
+        created_By = request.headers.get('Createdby')
+
+        if not created_By:
+            return {'message': "Missing CreatedBy header"}, 400
+
+        # Validate URL (if needed for KeyStore)
+        if data['url']:
+            if not validators.url(data['url']):
+                return jsonify({'message': 'Invalid URL'}), 400
+
+        # Ensure at least two keys
+        keys = [key.strip() for key in data['keys'].split(',')]
+        if len(keys) < 2:
+            return jsonify({'message': 'At least two keys are required'}), 400
+
+        with session_scope('DESIGNER') as session:
+            # Step 1: Fetch or create the workflow ID
+            workflow_name = data.get('workflow_name')
+            workflow = session.query(Workflow).filter_by(workflow_name=workflow_name).first()
+
+            if not workflow:
+                new_workflow = Workflow(
+                    workflow_name=workflow_name,
+                    system_name=workflow_name,
+                    created_date=datetime.utcnow()
+                )
+                session.add(new_workflow)
+                session.flush()  # Commit to get the new workflow ID
+                workflow_id = new_workflow.id
+            else:
+                workflow_id = workflow.id
+
+            # Step 2: Define the overlap check functions
+            def check_key_store_entry(session, workflow_id):
+                return session.query(KeyStoreRequests).filter_by(
+                    workflow_url=data['url'],
+                    environment=data['environment'],
+                    workflow_id=workflow_id,
+                    window_keys=data['keys']
+                ).first()
+
+            def check_key_config_requests_entry(session, workflow_id):
+                return session.query(KeyStoreConfigRequests).filter_by(
+                    workflow_url=data['url'],
+                    environment=data['environment'],
+                    workflow_id=workflow_id,
+                    window_keys=data['keys']
+                ).first()
+
+            def check_key_store_overlap(session, keys):
+                existing_keystores = session.query(KeyStoreRequests).filter(KeyStoreRequests.is_active == True).all()
+                existing_keys = set()
+
+                for ks in existing_keystores:
+                    ex_keys = set(key.strip() for key in ks.window_keys.split(','))
+                    existing_keys.update(ex_keys)
+
+                overlap = existing_keys & set(keys)
+                return overlap
+
+            def check_key_config_requests_overlap(session, keys):
+                existing_requests = session.query(KeyStoreConfigRequests).filter(KeyStoreConfigRequests.is_active == True).all()
+                existing_keys = set()
+
+                for ks in existing_requests:
+                    ex_keys = set(key.strip() for key in ks.window_keys.split(','))
+                    existing_keys.update(ex_keys)
+
+                overlap = existing_keys & set(keys)
+                return overlap
+
+            # Step 3: Execute the overlap checks concurrently
+            with ThreadPoolExecutor() as executor:
+                # Run all checks concurrently
+                future_keystore = executor.submit(check_key_store_entry, session, workflow_id)
+                future_config_requests = executor.submit(check_key_config_requests_entry, session, workflow_id)
+                future_keystore_overlap = executor.submit(check_key_store_overlap, session, keys)
+                future_config_requests_overlap = executor.submit(check_key_config_requests_overlap, session, keys)
+
+                # Get results
+                keystore_result = future_keystore.result()
+                config_requests_result = future_config_requests.result()
+                keystore_overlap = future_keystore_overlap.result()
+                config_requests_overlap = future_config_requests_overlap.result()
+
+                # Check for existence
+                if keystore_result:
+                    return jsonify({'message': 'KeyStore Entry Already Exists in App Store'}), 400
+
+                if config_requests_result:
+                    return jsonify({
+                        'message': f'Entry already exists with Request ID: {config_requests_result.request_id}',
+                    }), 400
+
+                # Check for overlap
+                if keystore_overlap or config_requests_overlap:
+                    overlap_keys = keystore_overlap | config_requests_overlap
+                    return jsonify({
+                        'message': f'One or more keys already exist with another workflow: {", ".join(overlap_keys)}'
+                    }), 400
+
+                # No conflicts, proceed with creating the request
+                new_request = KeyStoreRequests(
+                    count=1,
+                    req_created_date=datetime.utcnow(),
+                    modified_date=datetime.utcnow(),
+                    created_by=created_By,
+                    is_active=True,
+                    status="OPEN",
+                )
+                session.add(new_request)
+                session.flush()  # Commit to get the new RequestId
+
+                new_keystore_config = KeyStoreConfigRequests(
+                    request_id=new_request.request_id,
+                    workflow_id=workflow_id,
+                    serial_number=1,
+                    workflow_name=workflow_name,
+                    workflow_url=data['url'],
+                    environment=data['environment'],
+                    is_active=True,
+                    status_ar="OPEN",
+                    modified_date=datetime.utcnow(),
+                    window_keys=data['keys'],
+                    is_full_image_capture=data.get('screenCapture', 'no') == 'yes',
+                )
+                session.add(new_keystore_config)
+
+                return jsonify({'message': 'KeyStore request created successfully', 'request_id': new_request.request_id}), 201
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+```
+
+#### `put` Method:
+This should allow for bulk updates, similar to the `WhitelistMakerResource` but adapted for `KeyStoreRequests`.
+
+```python
+@cross_origin()
+@jwt_required()
+def put(self):
+    with session_scope('DESIGNER') as session:
+        data = request.get_json()
+        request_ids = data.get('requestIds', [])
+
+        if not request_ids:
+            return jsonify({"error": "No Request ID's provided"}), 400
+
+        # Perform a bulk update to set Status to Sent for all given request_ids
+        updated_count = session.query(KeyStoreRequests).filter(
+            KeyStoreRequests.request_id.in_(request_ids)
+        ).update(
+            {KeyStoreRequests.status: 'SENT'},
+            synchronize_session=False
+        )
+        return {'message': f"{updated_count} record's have been Sent for Approval"}, 200
+```
+
+### 3. **Status and ID-Based Resources**
+
+Implement the other resources like `KeyStoreMakerStatusResource`, `KeyStoreMakerRequestIdResource`, and `KeyStoreMakerIdResource` following a similar structure. These should align with how status, request ID, and individual record updates are managed.
+
+### 4. **Register Resources with API**
+
+Finally, don't forget to register these resources with your Flask API instance:
+
+```python
+api.add_resource(KeyStoreMakerResource, '/keystore/')
+api.add_resource(KeyStoreMakerStatusResource, '/keystore/status/<str:status>')
+api.add_resource(KeyStoreMakerRequestIdResource, '/keystore/request-id/<int:request_id>')
+api.add_resource(KeyStoreMakerIdResource, '/keystore/request-id/id/<int:id>')
+```
+
+### Conclusion
+This should give you a strong foundation for your `KeyStoreMaker` resources, modeled after your existing `WhitelistMaker` structure but adapted for the new tables and logic you need. You can further adjust and expand as necessary.
+
+
+
+
+
+
+
+
 Thank you for clarifying. I now understand that the statuses you're concerned with are already provided in the payload. Based on these statuses, you need to update the status of the `request_id` in another table. Here's how to properly handle this:
 
 ### Revised Implementation
