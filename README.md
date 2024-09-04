@@ -1,4 +1,29 @@
+from flask import request
 
+class WhitelistMakerDeleteResource(Resource):
+    @cross_origin()
+    @jwt_required()
+    def delete(self):
+        data = request.get_json()  # Get the JSON data from the request body
+        request_ids = data.get('request_ids')  # Extract the list of request IDs
+
+        if not request_ids or not isinstance(request_ids, list):
+            return {'message': 'Request IDs must be provided as a list'}, 400
+
+        with session_scope('DESIGNER') as session:
+            # Retrieve all records with the given request IDs
+            whitelist_entries = session.query(WhitelistStoreRequests).filter(
+                WhitelistStoreRequests.request_id.in_(request_ids)
+            ).all()
+
+            if not whitelist_entries:
+                return {'message': 'No matching whitelist entries found'}, 404
+
+            # Mark all retrieved entries as inactive
+            for entry in whitelist_entries:
+                entry.is_active = False
+
+        return {'message': f'Whitelist Request entries {request_ids} deleted successfully'}, 200
 
 Understood. Here's the revised `GET` request method that addresses both conditions correctly:
 
