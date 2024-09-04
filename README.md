@@ -1,4 +1,443 @@
 
+
+Understood. Here's the revised `GET` request method that addresses both conditions correctly:
+
+1. **For `pending` status**:
+   - Query the `WhitelistStoreRequestsApprovers` table to get request IDs associated with the checker's PSID.
+   - Use these request IDs to fetch the request details from the `WhitelistStoreRequests` table.
+
+2. **For `approved`, `rejected`, or `partially approved` statuses**:
+   - Directly query the `WhitelistStoreRequests` table.
+   - Include approver details like `approved_by_approver_email` and `approved_by_approver_name` from the main table.
+
+Here’s the updated code:
+
+```python
+class WhitelistCheckerStatusResource(Resource):
+    @jwt_required()
+    def get(self, status):
+        try:
+            checker_id = get_jwt_identity()  # Get the checker's PSID from JWT
+            if not checker_id:
+                return {'message': "Missing or invalid JWT"}, 400
+
+            with session_scope('DESIGNER') as session:
+                if status == 'pending':
+                    # Fetch request IDs from the approvers table where approver_id matches the checker's ID
+                    approver_requests = session.query(WhitelistStoreRequestsApprovers.request_id).filter_by(
+                        approver_id=checker_id
+                    ).all()
+                    
+                    request_ids = [r.request_id for r in approver_requests]
+                    
+                    # Fetch request details from the `WhitelistStoreRequests` table based on request IDs
+                    app_requests = session.query(WhitelistStoreRequests).filter(
+                        WhitelistStoreRequests.request_id.in_(request_ids)
+                    ).all()
+                    
+                    # Prepare data to send to the frontend
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approvers': [{
+                            'approverId': a.approver_id,
+                            'status': a.status
+                        } for a in session.query(WhitelistStoreRequestsApprovers).filter_by(
+                            request_id=w.request_id
+                        ).all()],
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status
+                    } for w in app_requests]
+                
+                elif status in ['approved', 'rejected', 'partially approved']:
+                    # Fetch request details from the main table based on status
+                    app_requests = session.query(WhitelistStoreRequests).filter_by(
+                        status=status
+                    ).all()
+                    
+                    # Prepare data to send to the frontend
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approver': {
+                            'approverId': w.approved_by_approver_id,
+                            'approverEmail': w.approved_by_approver_email,
+                            'approverName': w.approved_by_approver_name
+                        },
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status
+                    } for w in app_requests]
+                
+                else:
+                    # Status is 'open', no approvers to be fetched
+                    data = []
+
+            return jsonify(data)
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+```
+
+### Key Updates:
+- **Pending Status**: Retrieve request details based on the approvers table.
+- **Approved, Rejected, Partially Approved**: Include approver details from the main table.
+- **Open Status**: Return an empty list as no approver details are needed.
+
+
+
+
+
+Got it. Given that the `Approver ID` itself serves as the `PSID`, we will adjust the response structure to remove any reference to `PSID` and use `Approver ID` instead.
+
+Here’s the revised `get` method for the `WhitelistMakerStatusResource`:
+
+```python
+class WhitelistMakerStatusResource(Resource):
+    @jwt_required()
+    def get(self, status):
+        try:
+            created_By = request.headers.get('Createdby')
+            if not created_By:
+                return {'message': "Missing CreatedBy header"}, 400
+
+            with session_scope('DESIGNER') as session:
+                # Query for main table data
+                app_requests = session.query(WhitelistStoreRequests).filter_by(
+                    created_by=created_By,
+                    is_active=True,
+                    status=status
+                ).all()
+
+                # Initialize list to store data
+                data = []
+                
+                if status == 'pending':
+                    # Extract request IDs for further querying approvers
+                    request_ids = [w.request_id for w in app_requests]
+                    approvers = session.query(WhitelistStoreRequestsApprovers).filter(
+                        WhitelistStoreRequestsApprovers.request_id.in_(request_ids)
+                    ).all()
+                    
+                    approvers_by_request = {}
+                    for a in approvers:
+                        if a.request_id not in approvers_by_request:
+                            approvers_by_request[a.request_id] = []
+                        approvers_by_request[a.request_id].append({
+                            'approverId': a.approver_id,
+                            'approverName': a.approver_name,
+                            'approverEmail': a.approver_email
+                        })
+                    
+                    # Populate the response data
+                    for w in app_requests:
+                        data.append({
+                            'requestId': w.request_id,
+                            'count': w.count,
+                            'approvers': approvers_by_request.get(w.request_id, []),
+                            'requestCreatedDate': w.req_created_date,
+                            'requestSentDate': w.req_sent_date,
+                            'approverActionDate': w.approver_action_date,
+                            'modifiedDate': w.modified_date,
+                            'status': w.status
+                        })
+                else:
+                    # For other statuses, just add main table data
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approvers': [],  # No approver details needed
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status
+                    } for w in app_requests]
+                
+            return jsonify(data)
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+```
+
+### Summary of Changes:
+- **Removed PSID Reference:** Updated the `approvers` dictionary to use `approverId` instead of `PSID`.
+- **Maintained Efficiency:** Kept the approach of querying all necessary data in one go and processing it in-memory to minimize database hits.
+- **Handling Different Statuses:** Adjusted response handling based on whether the status is `pending` or another status.
+
+This code should align with your current table structure and efficiently handle the approver details as per the requirements.
+
+
+
+
+
+Understood. Based on the scenario you described, you need to handle three main cases for approver details:
+
+1. **Open State**: No approvers are selected yet, so you return an empty list for approvers.
+2. **Pending State**: Approvers have been selected but no final decision has been made. You need to join with the `WhitelistAppstoreRequestApprovers` table to get details of all selected approvers.
+3. **Approved/Rejected**: Only the approver who made the final decision should be recorded in the `WhitelistStoreRequests` table, and details of other approvers should be marked as no action needed. You should update the `WhitelistAppstoreRequestApprovers` table accordingly.
+
+### Updated Code
+
+Here's how to handle the logic for fetching and updating request details based on the current table structure:
+
+#### 1. Updated `GET` Method
+
+```python
+from flask import Flask, Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_jwt_extended import jwt_required
+from sqlalchemy.orm import joinedload
+import logging
+from app.models.model_designer import WhitelistStoreRequests, WhitelistAppstoreRequestApprovers
+from app.database import session_scope
+
+bp = Blueprint('makerwhitelists', __name__, url_prefix='/api/whitelists-maker')
+api = Api(bp)
+
+class WhitelistMakerResource(Resource):
+    @jwt_required()
+    def get(self):
+        try:
+            created_By = request.headers.get('Createdby')
+            if not created_By:
+                return {'message': "Missing CreatedBy header"}, 400
+
+            with session_scope('DESIGNER') as session:
+                # Fetch all requests and related approvers in one query
+                app_requests = session.query(WhitelistStoreRequests).options(
+                    joinedload(WhitelistStoreRequests.approvers)
+                ).filter_by(
+                    created_by=created_By,
+                    is_active=True
+                ).all()
+
+                data = []
+                for w in app_requests:
+                    approvers = []
+                    if w.status == 'pending':
+                        approvers = [
+                            {'approvedBy': a.approved_by, 'approverEmail': a.approver_email, 'approverName': a.approver_name}
+                            for a in w.approvers
+                        ]
+                    elif w.status in ['approved', 'rejected']:
+                        # Only include the final approver details in the response
+                        final_approver = next((a for a in w.approvers if a.approved_by), None)
+                        if final_approver:
+                            approvers = [{'approvedBy': final_approver.approved_by, 'approverEmail': final_approver.approver_email, 'approverName': final_approver.approver_name}]
+                        else:
+                            approvers = []  # No approvers if none are finalized
+
+                    data.append({
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status,
+                        'createdBy': w.created_by,
+                        'createdByEmail': w.created_by_email,
+                        'approvers': approvers
+                    })
+
+            return jsonify(data)
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    # The other methods remain unchanged
+```
+
+#### 2. Updated `PUT` Method
+
+To update approver details in the `WhitelistStoreRequests` table and mark other approvers as no action needed, you can use the following approach:
+
+```python
+from flask import Flask, Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_jwt_extended import jwt_required
+from sqlalchemy.orm import sessionmaker
+import logging
+from app.models.model_designer import WhitelistStoreRequests, WhitelistAppstoreRequestApprovers
+from app.database import session_scope
+
+bp = Blueprint('makerwhitelists', __name__, url_prefix='/api/whitelists-maker')
+api = Api(bp)
+
+class WhitelistMakerResource(Resource):
+    @jwt_required()
+    def put(self):
+        try:
+            data = request.get_json()
+            request_ids = data.get('requestIds', [])
+            approvers = data.get('approverInfo', [])
+
+            if not request_ids:
+                return jsonify({"error": "No Request IDs provided"}), 400
+            if not approvers or len(approvers) > 2 or len(approvers) < 1:
+                return jsonify({"error": "Insufficient approvers provided"}), 400
+
+            approverr_1 = approvers[0]
+            approverr_2 = approvers[1] if len(approvers) > 1 else {}
+
+            with session_scope('DESIGNER') as session:
+                # Perform a bulk update to set status and approver details for all given request_ids
+                updated_count = session.query(WhitelistStoreRequests).filter(
+                    WhitelistStoreRequests.request_id.in_(request_ids)
+                ).update(
+                    {WhitelistStoreRequests.status: 'pending',
+                     WhitelistStoreRequests.approver_1: approverr_1.get('name'),
+                     WhitelistStoreRequests.approver_1_email: approverr_1.get('email'),
+                     WhitelistStoreRequests.approver_2: approverr_2.get('name', None),
+                     WhitelistStoreRequests.approver_2_email: approverr_2.get('email', None)
+                    },
+                    synchronize_session=False
+                )
+
+                # Update the approver details in WhitelistAppstoreRequestApprovers table
+                for request_id in request_ids:
+                    for approver in approvers:
+                        existing_approver = session.query(WhitelistAppstoreRequestApprovers).filter_by(request_id=request_id, approved_by=approver.get('id')).first()
+                        if existing_approver:
+                            existing_approver.approver_email = approver.get('email')
+                            existing_approver.approver_name = approver.get('name')
+                        else:
+                            new_approver = WhitelistAppstoreRequestApprovers(
+                                request_id=request_id,
+                                approved_by=approver.get('id'),
+                                approver_email=approver.get('email'),
+                                approver_name=approver.get('name')
+                            )
+                            session.add(new_approver)
+
+                # Update status in WhitelistAppstoreRequestApprovers table
+                session.query(WhitelistAppstoreRequestApprovers).filter(
+                    WhitelistAppstoreRequestApprovers.request_id.in_(request_ids),
+                    WhitelistAppstoreRequestApprovers.approved_by.notin_([a.get('id') for a in approvers])
+                ).update(
+                    {WhitelistAppstoreRequestApprovers.status: 'no action needed'},
+                    synchronize_session=False
+                )
+
+                return {'message': f"{updated_count} record(s) have been sent for approval"}, 200
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+```
+
+### Explanation
+
+1. **GET Method:**
+   - Fetch all requests with related approvers using `joinedload`.
+   - Return approver details based on the request status:
+     - **Open:** Empty list for approvers.
+     - **Pending:** Include all approvers.
+     - **Approved/Rejected:** Include only the approver who made the final decision.
+
+2. **PUT Method:**
+   - Update the `WhitelistStoreRequests` table with the new approver details and status.
+   - Update or insert approver details into the `WhitelistAppstoreRequestApprovers` table.
+   - Set the status to 'no action needed' for approvers not involved in the final decision.
+
+This approach ensures that you efficiently manage approver details and update statuses based on the request's progress.
+
+
+
+
+
+
+
+I understand now. You want to:
+
+1. **Create New Approvers:** Add new entries in the `WhitelistAppstoreRequestApprovers` table for each approver in the request.
+2. **Avoid Deleting Existing Approvers:** Since it's the first time the request is being sent, you won't need to clear existing approvers.
+
+Here's the corrected `PUT` method implementation based on your instructions:
+
+### Updated `PUT` Method
+
+```python
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_jwt_extended import jwt_required
+from sqlalchemy.exc import SQLAlchemyError
+from app.models.model_designer import WhitelistStoreRequests, WhitelistAppstoreRequestApprovers
+from app.database import session_scope
+import logging
+
+bp = Blueprint('makerwhitelists', __name__, url_prefix='/api/whitelists-maker')
+api = Api(bp)
+
+class WhitelistMakerResource(Resource):
+    @jwt_required()
+    def put(self):
+        try:
+            data = request.get_json()
+            request_ids = data.get('requestIds', [])
+            approvers = data.get('approverInfo', [])
+
+            if not request_ids:
+                return jsonify({"error": "No Request IDs provided"}), 400
+            if not approvers:
+                return jsonify({"error": "No approvers provided"}), 400
+
+            with session_scope('DESIGNER') as session:
+                # Update the status of the requests to 'pending'
+                session.query(WhitelistStoreRequests).filter(
+                    WhitelistStoreRequests.request_id.in_(request_ids)
+                ).update(
+                    {WhitelistStoreRequests.status: 'pending'},
+                    synchronize_session=False
+                )
+
+                # Add new approvers
+                approver_entries = []
+                for request_id in request_ids:
+                    for approver in approvers:
+                        approver_entries.append(
+                            WhitelistAppstoreRequestApprovers(
+                                request_id=request_id,
+                                approved_by=approver.get('id'),
+                                approver_email=approver.get('email'),
+                                approver_name=approver.get('name'),
+                                psid=approver.get('psid')  # Assuming PSID field exists
+                            )
+                        )
+
+                # Add all approver entries to the session in bulk
+                if approver_entries:
+                    session.bulk_save_objects(approver_entries)
+
+                return {'message': f"{len(request_ids)} request(s) have been sent for approval"}, 200
+        except SQLAlchemyError as e:
+            logging.error(f"SQLAlchemy Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': 'Database error occurred'}), 500
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+```
+
+### Key Points
+
+1. **No Deletion:** Since it's the first time the requests are being sent, there are no existing approvers to delete.
+2. **Adding Approvers:** New entries are created in the `WhitelistAppstoreRequestApprovers` table based on the provided `approverInfo`.
+3. **Bulk Insertion:** Uses `session.bulk_save_objects` to efficiently insert multiple approver entries.
+
+This approach will correctly handle adding approvers to the table while maintaining the integrity of your request handling process.
+
+
+
+
+
+
+
+
 Given the requirement that any one of the multiple approvers can approve or reject the request, and once an action is taken by one approver, the others cannot take any action, you can implement this with the following strategy:
 
 ### Table Design
