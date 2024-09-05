@@ -1,4 +1,141 @@
 
+
+You're right in pointing out that the current approach executes a separate query for each request ID, which could be inefficient if there are many requests. A more efficient approach would be to use **SQL joins** to retrieve all the necessary data in a **single query**.
+
+By using a `join` operation between `WhitelistStoreRequests` and `WhitelistStoreRequestsApprovals`, we can retrieve both the request details and the associated approvers in one go. Here’s how you can modify the code to avoid multiple queries:
+
+### Optimized Code with a Single Query:
+
+```python
+class WhitelistCheckerStatusResource(Resource):
+    @jwt_required()
+    def get(self, status):
+        try:
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            with session_scope('DESIGNER') as session:
+                if status == 'pending':
+                    # Use a single query to fetch requests and their approvers
+                    app_requests = session.query(
+                        WhitelistStoreRequests,
+                        WhitelistStoreRequestsApprovals
+                    ).join(
+                        WhitelistStoreRequestsApprovals,
+                        WhitelistStoreRequests.request_id == WhitelistStoreRequestsApprovals.request_id
+                    ).filter(
+                        WhitelistStoreRequestsApprovals.approver_id == user_id,
+                        WhitelistStoreRequests.status == 'pending'
+                    ).all()
+
+                    # Prepare a dictionary to hold request details and associated approvers
+                    requests_dict = {}
+
+                    # Process the query result to collect approver details for each request
+                    for request, approval in app_requests:
+                        request_id = request.request_id
+
+                        # If the request_id is not yet in the dict, add it with initial request details
+                        if request_id not in requests_dict:
+                            requests_dict[request_id] = {
+                                'requestId': request.request_id,
+                                'count': request.count,
+                                'approvers': [],
+                                'creatorName': request.creator_name,
+                                'creatorEmail': request.creator_email,
+                                'creatorId': request.created_by,
+                                'requestCreatedDate': request.req_created_date,
+                                'requestSentDate': request.req_sent_date,
+                                'status': request.status
+                            }
+
+                        # Append approver details to the request's approvers list
+                        requests_dict[request_id]['approvers'].append({
+                            'approverId': approval.approver_id,
+                            'approverEmail': approval.approver_email,
+                            'approverName': approval.approver_name
+                        })
+
+                    # Convert the dictionary to a list to send to the frontend
+                    data = list(requests_dict.values())
+
+                elif status in ['approved', 'rejected', 'partially approved']:
+                    # Fetch request details from the main table based on status
+                    app_requests = session.query(WhitelistStoreRequests).filter_by(
+                        status=status
+                    ).all()
+
+                    # Prepare data to send to the frontend
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approverId': w.approver_1,
+                        'approverEmail': w.approver_1_email,
+                        'approverName': w.approver_1_name,
+                        'creatorName': w.creator_name,
+                        'creatorEmail': w.creator_email,
+                        'creatorId': w.created_by,
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status,
+                        'comments': w.comments
+                    } for w in app_requests]
+
+                else:
+                    # Fetch request details based on approved_by and status
+                    app_requests = session.query(WhitelistStoreRequests).filter_by(
+                        approved_by=user_id,
+                        is_active=True,
+                        status=status
+                    ).all()
+
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approverId': w.approver_1,
+                        'approverEmail': w.approver_1_email,
+                        'approverName': w.approver_1_name,
+                        'requestCreatedDate': w.req_created_date,
+                        'status': w.status
+                    } for w in app_requests]
+
+            return jsonify(data)
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+```
+
+### Key Changes:
+1. **Single query with `join`**: 
+   - We perform a join between `WhitelistStoreRequests` and `WhitelistStoreRequestsApprovals` using `request_id` as the join key.
+   - The query now retrieves both the request and approval information in a single result set.
+
+2. **Dictionary to group approvers by `request_id`**:
+   - We use a dictionary (`requests_dict`) to collect all approvers for each request. For each request, we append the approver details to the `approvers` list within the dictionary.
+
+3. **Efficient data processing**:
+   - Instead of executing a new query for each request ID, we process the result set of the single query to construct the final data structure.
+   - Once all the data is collected, we convert the dictionary to a list and return it as the final response.
+
+### Advantages:
+- **Efficiency**: This approach significantly reduces the number of queries. Instead of querying for each request's approvers separately, you are now using a single query to retrieve all necessary data.
+- **Scalability**: If there are many requests and approvers, this approach scales better since it minimizes database round trips.
+
+
+
+
+
+
+
+
+
+
+
+
 You're right in pointing out that the current approach executes a separate query for each request ID, which could be inefficient if there are many requests. A more efficient approach would be to use **SQL joins** to retrieve all the necessary data in a **single query**.
 
 By using a `join` operation between `WhitelistStoreRequests` and `WhitelistStoreRequestsApprovals`, we can retrieve both the request details and the associated approvers in one go. Here’s how you can modify the code to avoid multiple queries:
