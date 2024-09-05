@@ -1,3 +1,101 @@
+
+from flask import request, jsonify
+from flask_jwt_extended import jwt_required
+from sqlalchemy import update, select
+from sqlalchemy.exc import SQLAlchemyError
+from app.models.model_designer import WhitelistStoreRequests, WhitelistStoreConfigRequests
+from app.database import session_scope
+from datetime import datetime
+
+class WhitelistApprovalResource(Resource):
+    @jwt_required()
+    def put(self):
+        try:
+            # Step 1: Parse the Incoming Payload
+            data = request.get_json()
+            request_id = data.get('request_id')
+            updates = data.get('data', [])
+
+            # Step 2: Validate the Request Payload
+            if not request_id:
+                return jsonify({'message': 'Missing request_id'}), 400
+
+            if not updates or not isinstance(updates, list):
+                return jsonify({'message': 'Invalid or missing data'}), 400
+
+            with session_scope('DESIGNER') as session:
+                # Step 3: Query the Current Status of the Request
+                request_status_query = session.execute(
+                    select(WhitelistStoreRequests.status, WhitelistStoreRequests.approved_by)
+                    .where(WhitelistStoreRequests.request_id == request_id)
+                ).fetchone()
+
+                if request_status_query is None:
+                    return jsonify({'message': 'Request ID not found'}), 404
+
+                current_status, approved_by = request_status_query
+
+                # Step 4: Check if the Status is Still "Pending"
+                if current_status != 'pending':
+                    return jsonify({
+                        'message': f'Request is already {current_status}. No further action required.',
+                        'approved_by': approved_by
+                    }), 200
+
+                # Step 5: Extract the statuses from the payload
+                statuses = [item['status'] for item in updates if 'id' in item and 'status' in item]
+
+                if not statuses:
+                    return jsonify({'message': 'No valid updates found in the payload'}), 400
+
+                # Step 6: Determine the overall request status based on the payload statuses
+                if all(status == 'approved' for status in statuses):
+                    overall_status = 'approved'
+                elif all(status == 'rejected' for status in statuses):
+                    overall_status = 'rejected'
+                else:
+                    overall_status = 'partially-approved'
+
+                # Step 7: Update the individual records in WhitelistStoreConfigRequests
+                stmt = (
+                    update(WhitelistStoreConfigRequests)
+                    .where(WhitelistStoreConfigRequests.id.in_([item['id'] for item in updates]))
+                    .values(
+                        status_ar=case(
+                            [
+                                (WhitelistStoreConfigRequests.id == item['id'], item['status'])
+                                for item in updates
+                            ],
+                            else_=WhitelistStoreConfigRequests.status
+                        ),
+                        modified_date=datetime.utcnow()
+                    )
+                )
+                session.execute(stmt)
+
+                # Step 8: Update the request status in WhitelistStoreRequests
+                request_update_stmt = (
+                    update(WhitelistStoreRequests)
+                    .where(WhitelistStoreRequests.request_id == request_id)
+                    .values(
+                        status=overall_status,
+                        approver_action_date=datetime.utcnow()
+                    )
+                )
+                session.execute(request_update_stmt)
+
+                return jsonify({'message': 'Request updated successfully'}), 200
+
+        except SQLAlchemyError as e:
+            return jsonify({'status': 'error', 'message': 'Database error occurred'}), 500
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+
+
+
+
 from flask import request
 
 class WhitelistMakerDeleteResource(Resource):
