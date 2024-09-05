@@ -1,4 +1,172 @@
 
+The code provided is quite efficient for the described requirements, but there are some areas where optimizations can be made to enhance performance and clarity. Here are a few suggestions for further optimization:
+
+### 1. **Batch Processing**
+
+Instead of querying and updating records one-by-one, you can perform batch operations where possible. This is especially useful when dealing with large datasets.
+
+**Batch Update:**
+- Use a single update statement to mark multiple records as moved in one go.
+
+**Batch Insert:**
+- Collect all new records to be inserted into a list and perform a single batch insert operation.
+
+### 2. **Indexing**
+
+Ensure that the columns used in queries (`request_id`, `status_ar`, etc.) are indexed. This can significantly improve the performance of `SELECT` queries.
+
+### 3. **Avoid Unnecessary Queries**
+
+If you only need to check the status and move records once, avoid fetching all records for `approved` status if you’re not using them immediately. You can perform the moving and updating in one transaction to minimize the number of database operations.
+
+### 4. **Transaction Management**
+
+Ensure that the entire operation (update and insert) is done in a single transaction to maintain data integrity and consistency.
+
+### Optimized Code Example
+
+Here’s a revised version of your `PUT` method with these optimizations:
+
+```python
+@cross_origin()
+@jwt_required()  
+def put(self):  # needed
+    try:
+        user_email = get_jwt_identity()
+        claims = get_jwt()
+        user_id = claims.get("user_id")
+        user_name = claims.get("user_name").title()
+
+        # Step 1: Parse the Incoming Payload
+        data = request.get_json()
+        request_id = data.get('request_id')
+        updates = data.get('data', [])
+
+        # Step 2: Validate the Request Payload
+        if not request_id:
+            return jsonify({'message': 'Missing request_id'}), 400
+
+        if not updates or not isinstance(updates, list):
+            return jsonify({'message': 'Invalid or missing data'}), 400
+
+        with session_scope('DESIGNER') as session:
+            # Step 3: Query the Current Status of the Request
+            request_status_query = session.execute(
+                select(
+                    WhitelistStoreRequests.status,
+                    WhitelistStoreRequests.approved_by,
+                    WhitelistStoreRequests.created_by,
+                    WhitelistStoreRequests.created_date
+                )
+                .where(WhitelistStoreRequests.request_id == request_id)
+            ).fetchone()
+
+            if request_status_query is None:
+                return jsonify({'message': 'Request ID not found'}), 404
+
+            current_status, approved_by, created_by, created_date = request_status_query
+
+            # Step 4: Check if the Status is Still "Pending"
+            if current_status != 'pending':
+                return jsonify({
+                    'message': f'Request is already {current_status} by {approved_by}. No further action required.',
+                }), 200
+
+            # Step 5: Extract the statuses from the payload
+            statuses = [item['status'] for item in updates if 'id' in item and 'status' in item]
+
+            if not statuses:
+                return jsonify({'message': 'No valid updates found in the payload'}), 400
+
+            # Step 6: Determine the overall request status based on the payload statuses
+            if all(status == 'approved' for status in statuses):
+                overall_status = 'approved'
+            elif all(status == 'rejected' for status in statuses):
+                overall_status = 'rejected'
+            else:
+                overall_status = 'partially-approved'
+
+            # Step 7: Update the individual records in WhitelistStoreConfigRequests
+            stmt = (
+                update(WhitelistStoreConfigRequests)
+                .where(WhitelistStoreConfigRequests.id.in_([item['id'] for item in updates]))
+                .values(
+                    status_ar=case(
+                        *[
+                            (WhitelistStoreConfigRequests.id == item['id'], item['status'])
+                            for item in updates
+                        ],
+                        else_=WhitelistStoreConfigRequests.status_ar
+                    ),
+                    modified_date=datetime.utcnow()
+                )
+            )
+            session.execute(stmt)
+
+            # Step 8: Move Approved Records to Main Table (KeyNameMapping)
+            approved_records = session.execute(
+                select(WhitelistStoreConfigRequests)
+                .where(WhitelistStoreConfigRequests.request_id == request_id)
+                .where(WhitelistStoreConfigRequests.status_ar == 'approved')
+                .where(WhitelistStoreConfigRequests.moved_to_main_table == False)
+            ).fetchall()
+
+            # Prepare batch insert
+            main_entries = [
+                KeyNameMapping(
+                    workflow_name=record.workflow_name,
+                    workflow_id=record.workflow_id,
+                    url=record.url,
+                    environment=record.environment,
+                    title=record.title,
+                    screen_capture=record.screen_capture,
+                    created_by=created_by,
+                    created_date=created_date
+                )
+                for record in approved_records
+            ]
+
+            # Perform batch insert
+            session.bulk_save_objects(main_entries)
+
+            # Mark the records as moved
+            session.execute(
+                update(WhitelistStoreConfigRequests)
+                .where(WhitelistStoreConfigRequests.id.in_([record.id for record in approved_records]))
+                .values(moved_to_main_table=True)
+            )
+
+            # Step 9: Update the request status in WhitelistStoreRequests table
+            request_update_stmt = (
+                update(WhitelistStoreRequests)
+                .where(WhitelistStoreRequests.request_id == request_id)
+                .values(
+                    status=overall_status,
+                    approver_action_date=datetime.utcnow(),
+                    approver_1_name=user_name,
+                    approver_1_email=user_email,
+                    approver_1=user_id
+                )
+            )
+            session.execute(request_update_stmt)
+
+        return jsonify({'message': 'Records updated and moved to the main table successfully'}), 200
+    except Exception as e:
+        logging.error(f"Error Occurred: {str(e)}")
+        return jsonify({'status': 'error', 'message': 'An internal server error occurred'}), 500
+```
+
+### Changes Made:
+
+1. **Batch Insert**: Use `bulk_save_objects` for batch insertion into `KeyNameMapping`.
+2. **Batch Update**: Update the `moved_to_main_table` flag for multiple records in one operation.
+3. **Indexing**: Ensure that appropriate indexes are present on columns used in filtering and joining.
+
+These optimizations can help improve the performance, especially when dealing with a large volume of records.
+
+
+
+
 
 You're right in pointing out that the current approach executes a separate query for each request ID, which could be inefficient if there are many requests. A more efficient approach would be to use **SQL joins** to retrieve all the necessary data in a **single query**.
 
