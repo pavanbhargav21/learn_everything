@@ -1,4 +1,93 @@
 
+class WhitelistCheckerStatusResource(Resource):
+    @jwt_required()
+    def get(self, status):
+        try:
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            with session_scope('DESIGNER') as session:
+                if status == 'pending':
+                    # Perform a join between WhitelistStoreRequests and WhitelistStoreRequestsApprovals
+                    app_requests = session.query(
+                        WhitelistStoreRequests, WhitelistStoreRequestsApprovals
+                    ).join(
+                        WhitelistStoreRequestsApprovals,
+                        WhitelistStoreRequests.request_id == WhitelistStoreRequestsApprovals.request_id
+                    ).filter(
+                        WhitelistStoreRequestsApprovals.approver_id == user_id,
+                        WhitelistStoreRequests.status == 'pending'
+                    ).all()
+
+                    # Prepare data to send to the frontend
+                    data = [{
+                        'requestId': wsr.request_id,
+                        'count': wsr.count,
+                        'approvers': [{
+                            'approverId': wsa.approver_id,
+                            'approverEmail': wsa.approver_email,
+                            'approverName': wsa.approver_name
+                        }],
+                        'creatorName': wsr.creator_name,
+                        'creatorEmail': wsr.creator_email,
+                        'creatorId': wsr.created_by,
+                        'requestCreatedDate': wsr.req_created_date,
+                        'requestSentDate': wsr.req_sent_date,
+                        'status': wsr.status
+                    } for wsr, wsa in app_requests]
+
+                elif status in ['approved', 'rejected', 'partially approved']:
+                    # Fetch request details from the main table based on status
+                    app_requests = session.query(WhitelistStoreRequests).filter_by(
+                        status=status
+                    ).all()
+
+                    # Prepare data to send to the frontend
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approverId': w.approver_1,
+                        'approverEmail': w.approver_1_email,
+                        'approverName': w.approver_1_name,
+                        'creatorName': w.creator_name,
+                        'creatorEmail': w.creator_email,
+                        'creatorId': w.created_by,
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status,
+                        'comments': w.comments
+                    } for w in app_requests]
+
+                else:
+                    # Fetch request details based on approved_by and status
+                    app_requests = session.query(WhitelistStoreRequests).filter_by(
+                        approved_by=user_id,
+                        is_active=True,
+                        status=status
+                    ).all()
+
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approverId': w.approver_1,
+                        'approverEmail': w.approver_1_email,
+                        'approverName': w.approver_1_name,
+                        'requestCreatedDate': w.req_created_date,
+                        'status': w.status
+                    } for w in app_requests]
+
+            return jsonify(data)
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+
+
 from flask import request, jsonify
 from flask_jwt_extended import jwt_required
 from sqlalchemy import update, select
