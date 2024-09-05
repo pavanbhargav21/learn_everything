@@ -1,4 +1,166 @@
 
+The error you're encountering is due to the `select` function not being imported from SQLAlchemy. In SQLAlchemy ORM, `select` is used for building `SELECT` queries, but it needs to be explicitly imported.
+
+Here's the updated code with the necessary imports:
+
+### Corrected Imports
+
+```python
+from sqlalchemy import select, update, case
+from sqlalchemy.orm import session
+from datetime import datetime
+```
+
+### Full Corrected Code with Imports
+
+```python
+from sqlalchemy import select, update, case
+from sqlalchemy.orm import session
+from datetime import datetime
+from flask import jsonify, request
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from sqlalchemy.exc import SQLAlchemyError
+import logging
+
+@cross_origin()
+@jwt_required()  
+def put(self):  # needed
+    try:
+        user_email = get_jwt_identity()
+        claims = get_jwt()
+        user_id = claims.get("user_id")
+        user_name = claims.get("user_name").title()
+
+        # Step 1: Parse the Incoming Payload
+        data = request.get_json()
+        request_id = data.get('request_id')
+        updates = data.get('data', [])
+
+        # Step 2: Validate the Request Payload
+        if not request_id:
+            return jsonify({'message': 'Missing request_id'}), 400
+
+        if not updates or not isinstance(updates, list):
+            return jsonify({'message': 'Invalid or missing data'}), 400
+
+        with session_scope('DESIGNER') as session:
+            # Step 3: Query the Current Status of the Request
+            request_status_query = session.execute(
+                select(
+                    WhitelistStoreRequests.status,
+                    WhitelistStoreRequests.approved_by,
+                    WhitelistStoreRequests.created_by,
+                    WhitelistStoreRequests.created_date
+                )
+                .where(WhitelistStoreRequests.request_id == request_id)
+            ).fetchone()
+
+            if request_status_query is None:
+                return jsonify({'message': 'Request ID not found'}), 404
+
+            current_status, approved_by, created_by, created_date = request_status_query
+
+            # Step 4: Check if the Status is Still "Pending"
+            if current_status != 'pending':
+                return jsonify({
+                    'message': f'Request is already {current_status} by {approved_by}. No further action required.',
+                }), 200
+
+            # Step 5: Extract the statuses from the payload
+            statuses = [item['status'] for item in updates if 'id' in item and 'status' in item]
+
+            if not statuses:
+                return jsonify({'message': 'No valid updates found in the payload'}), 400
+
+            # Step 6: Determine the overall request status based on the payload statuses
+            if all(status == 'approved' for status in statuses):
+                overall_status = 'approved'
+            elif all(status == 'rejected' for status in statuses):
+                overall_status = 'rejected'
+            else:
+                overall_status = 'partially-approved'
+
+            # Step 7: Update the individual records in WhitelistStoreConfigRequests
+            stmt = (
+                update(WhitelistStoreConfigRequests)
+                .where(WhitelistStoreConfigRequests.id.in_([item['id'] for item in updates]))
+                .values(
+                    status_ar=case(
+                        *[
+                            (WhitelistStoreConfigRequests.id == item['id'], item['status'])
+                            for item in updates
+                        ],
+                        else_=WhitelistStoreConfigRequests.status_ar
+                    ),
+                    modified_date=datetime.utcnow()
+                )
+            )
+            session.execute(stmt)
+
+            # Step 8: Move Approved Records to Main Table (KeyNameMapping)
+            approved_records = session.execute(
+                select(WhitelistStoreConfigRequests)
+                .where(WhitelistStoreConfigRequests.request_id == request_id)
+                .where(WhitelistStoreConfigRequests.status_ar == 'approved')
+                .where(WhitelistStoreConfigRequests.moved_to_main_table == False)
+            ).fetchall()
+
+            # Prepare batch insert
+            main_entries = [
+                KeyNameMapping(
+                    workflow_name=record.workflow_name,
+                    workflow_id=record.workflow_id,
+                    url=record.url,
+                    environment=record.environment,
+                    title=record.title,
+                    screen_capture=record.screen_capture,
+                    created_by=created_by,
+                    created_date=created_date
+                )
+                for record in approved_records
+            ]
+
+            # Perform batch insert
+            session.bulk_save_objects(main_entries)
+
+            # Mark the records as moved
+            session.execute(
+                update(WhitelistStoreConfigRequests)
+                .where(WhitelistStoreConfigRequests.id.in_([record.id for record in approved_records]))
+                .values(moved_to_main_table=True)
+            )
+
+            # Step 9: Update the request status in WhitelistStoreRequests table
+            request_update_stmt = (
+                update(WhitelistStoreRequests)
+                .where(WhitelistStoreRequests.request_id == request_id)
+                .values(
+                    status=overall_status,
+                    approver_action_date=datetime.utcnow(),
+                    approver_1_name=user_name,
+                    approver_1_email=user_email,
+                    approver_1=user_id
+                )
+            )
+            session.execute(request_update_stmt)
+
+        return jsonify({'message': 'Records updated and moved to the main table successfully'}), 200
+    except Exception as e:
+        logging.error(f"Error Occurred: {str(e)}")
+        return jsonify({'status': 'error', 'message': 'An internal server error occurred'}), 500
+```
+
+### Key Fixes:
+1. **Importing `select`**: The error was caused because the `select` method from SQLAlchemy wasn’t imported. I added the import statement `from sqlalchemy import select`.
+2. **General Error Handling**: Retained the `try-except` block for logging and error handling.
+3. **Optimized Batch Update/Insert**: No structural changes were needed since the rest of the code handles efficient batch operations. 
+
+Make sure that your environment includes all required SQLAlchemy functions and that the `WhitelistStoreConfigRequests` and `WhitelistStoreRequests` models are defined as needed.
+
+
+
+
+
 The code provided is quite efficient for the described requirements, but there are some areas where optimizations can be made to enhance performance and clarity. Here are a few suggestions for further optimization:
 
 ### 1. **Batch Processing**
