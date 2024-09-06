@@ -1,4 +1,112 @@
 
+You're correct that in most cases, when users authenticate via OAuth2, the access token is tied to their credentials, and any action (such as sending emails) will be performed on their behalf. However, in your scenario, you want to send emails from a **service account** or **shared mailbox** instead of the logged-in user’s account. Here's how to handle it in your setup using Microsoft Graph API:
+
+### Key Concepts:
+1. **Service Account/Shared Mailbox**: You need to send the emails from a specific account (e.g., `noreply@wipro.com`, `notifications@wipro.com`), which is often a **service account** or **shared mailbox**. This ensures that emails are sent on behalf of a common, non-user-specific account.
+2. **App-Only Authentication (Client Credentials Flow)**: To send emails from a **service account** or **shared mailbox**, you can use **App-only authentication** (also known as the **client credentials flow**). This type of authentication does not require a user to be logged in but instead relies on the app's permissions and credentials (client ID and secret) to access Microsoft Graph.
+
+### Approach: Use **App-Only Authentication** to Send Emails
+
+This approach bypasses the need for individual user authentication and allows your application to send emails from a predefined account (service account/shared mailbox).
+
+#### 1. **Set Up API Permissions for App-Only Authentication**:
+   - In your **Azure AD App registration**, you will need to configure **Application Permissions** (not Delegated Permissions, which are tied to users).
+   - Specifically, you will need to request the **Mail.Send** permission as an **Application Permission**.
+
+   Here’s how to do it:
+   - Go to your app registration in the **Azure portal**.
+   - Under **API permissions**, click **Add a permission**.
+   - Select **Microsoft Graph**.
+   - Choose **Application permissions** and search for `Mail.Send`.
+   - Add the permission, and then click **Grant admin consent** to give the app permission to send emails on behalf of the service account.
+
+#### 2. **Use Client Credentials to Authenticate**:
+   - Since you are not using user credentials, you will use the **client credentials flow** to get an access token. This token will allow your app to send emails from the service account or shared mailbox.
+
+Here’s the updated flow for sending emails from a service account:
+
+```python
+import msal
+import requests
+
+# Step 1: Set up necessary details
+TENANT_ID = 'your-tenant-id'
+CLIENT_ID = 'your-client-id'
+CLIENT_SECRET = 'your-client-secret'
+SCOPE = ['https://graph.microsoft.com/.default']  # App-only scope for Mail.Send
+AUTHORITY = f'https://login.microsoftonline.com/{TENANT_ID}'
+
+# Step 2: Create an instance of the MSAL confidential client (App-Only)
+app = msal.ConfidentialClientApplication(CLIENT_ID, authority=AUTHORITY, client_credential=CLIENT_SECRET)
+
+# Step 3: Acquire a token using client credentials (App-only)
+token = app.acquire_token_for_client(scopes=SCOPE)
+access_token = token['access_token']
+
+# Step 4: Define the email content (FROM the service account)
+email_data = {
+    "message": {
+        "subject": "Request Approved",
+        "body": {
+            "contentType": "HTML",
+            "content": "Your request has been approved and records have been moved to the main table."
+        },
+        "from": {
+            "emailAddress": {
+                "address": "noreply@wipro.com"  # Use your service account email here
+            }
+        },
+        "toRecipients": [
+            {
+                "emailAddress": {
+                    "address": "creator@wipro.com"
+                }
+            },
+            {
+                "emailAddress": {
+                    "address": "approver@wipro.com"
+                }
+            }
+        ]
+    },
+    "saveToSentItems": "true"
+}
+
+# Step 5: Send the email using Microsoft Graph API
+response = requests.post(
+    'https://graph.microsoft.com/v1.0/users/noreply@wipro.com/sendMail',  # Service account or shared mailbox
+    headers={'Authorization': 'Bearer ' + access_token, 'Content-Type': 'application/json'},
+    json=email_data
+)
+
+if response.status_code == 202:
+    print('Email sent successfully')
+else:
+    print(f'Error sending email: {response.text}')
+```
+
+#### 3. **Ensure the Service Account Has the Required Permissions**:
+   - The service account (`noreply@wipro.com`) must have the necessary permissions to send emails.
+   - The **Admin Consent** must be granted in the Azure portal for the **Mail.Send** application permission.
+
+#### 4. **Shared Mailbox Option (If Using a Shared Mailbox)**:
+   - If your organization uses a **shared mailbox** (e.g., `noreply@wipro.com` is a shared mailbox), you can still use the same approach.
+   - You need to ensure that the service account has **Send As** permissions on the shared mailbox.
+
+### Summary of Changes:
+1. **App-Only Authentication**: You're using **App-only** authentication (client credentials flow), not the user’s credentials. This allows the email to be sent from a service account (`noreply@wipro.com`).
+2. **Service Account**: The email will be triggered from the predefined service account or shared mailbox, not the user's personal email.
+3. **Permissions**: You need to configure **Application Permissions** for `Mail.Send` in Azure AD and ensure admin consent is granted.
+
+---
+
+This approach is commonly used in organizations to ensure that emails are sent from a standardized account (service or shared mailbox) rather than individual user accounts, even if the application is user-facing. Let me know if you need further clarification!
+
+
+
+
+
+
 The error you're encountering is due to the `select` function not being imported from SQLAlchemy. In SQLAlchemy ORM, `select` is used for building `SELECT` queries, but it needs to be explicitly imported.
 
 Here's the updated code with the necessary imports:
