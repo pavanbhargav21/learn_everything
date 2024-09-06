@@ -1,4 +1,173 @@
 
+Certainly! Let's walk through the entire process from the beginning to set up email triggering using Microsoft Graph API with a service account or shared mailbox after updating your main table.
+
+### 1. **Register Your Application in Azure AD (Already Done)**
+
+Since you’ve already registered your application and created a **Service Principal Name (SPN)**, you're halfway there. Let’s now focus on the steps specifically for email triggering.
+
+### 2. **Assign Necessary Permissions to Your Application**
+
+You need to grant your Azure AD application the required **Application Permissions** to send emails using Microsoft Graph. This will allow your app to send emails without relying on any user credentials.
+
+#### a. **Go to Azure AD Portal**
+- Navigate to the **Azure AD** section in the Azure Portal.
+- Go to **App registrations** and select your application.
+  
+#### b. **Add Application Permissions**
+- In your app’s registration page, go to **API Permissions**.
+- Click on **Add a permission**.
+- Choose **Microsoft Graph**.
+- Under **Application Permissions** (since you don’t want user context), search for and select the following permission:
+  - **`Mail.Send`** — This will allow your application to send emails as any user or service account.
+  
+#### c. **Grant Admin Consent**
+- After adding the permission, click **Grant admin consent** to approve these permissions for your application. Admin consent is needed for application-level permissions.
+
+### 3. **Set Up a Service Account or Shared Mailbox**
+
+You’ll need a **service account** or a **shared mailbox** from which the emails will be sent. This could be something like `noreply@wipro.com` or another account managed by your organization.
+
+#### a. **Create a Service Account (If Necessary)**
+If you don’t have one, ask your IT team to create a service account like `noreply@yourdomain.com` or a shared mailbox such as `automatedmailbox@yourdomain.com`.
+
+#### b. **Ensure Permissions on the Service Account/Shared Mailbox**
+Ensure that the service account or shared mailbox is allowed to send emails, and your application has permission to send emails on its behalf.
+
+### 4. **Use Client Credentials Flow to Acquire Token**
+
+Your application will use the **client credentials flow** to get an access token to call Microsoft Graph API.
+
+Here’s a Python example using **MSAL (Microsoft Authentication Library)** to acquire the token:
+
+#### a. **Install MSAL**
+```bash
+pip install msal
+```
+
+#### b. **Client Credentials Flow for Access Token**
+```python
+import msal
+
+# Define app credentials
+client_id = 'your-client-id'
+client_secret = 'your-client-secret'
+tenant_id = 'your-tenant-id'
+
+# Authority and endpoint for Microsoft Graph
+authority = f"https://login.microsoftonline.com/{tenant_id}"
+scopes = ["https://graph.microsoft.com/.default"]  # Default scope to get all the permissions
+
+# Create a ConfidentialClientApplication instance
+app = msal.ConfidentialClientApplication(
+    client_id,
+    authority=authority,
+    client_credential=client_secret,
+)
+
+# Acquire token using client credentials flow
+token_response = app.acquire_token_for_client(scopes=scopes)
+
+# Access token
+access_token = token_response.get('access_token')
+
+if not access_token:
+    raise Exception(f"Unable to acquire access token: {token_response.get('error_description')}")
+```
+
+### 5. **Send Email Using Microsoft Graph API**
+
+Once you have the access token, you can use it to send emails via the Microsoft Graph API.
+
+#### a. **Send Email Example Using Requests Library**
+Here’s how to send an email using the **Microsoft Graph API** with the access token obtained above:
+
+```python
+import requests
+
+# Define the Graph API endpoint for sending email
+graph_api_url = 'https://graph.microsoft.com/v1.0/users/noreply@yourdomain.com/sendMail'
+
+# Define the email details
+email_payload = {
+    "message": {
+        "subject": "Your request has been processed",
+        "body": {
+            "contentType": "HTML",
+            "content": "<p>Dear User,</p><p>Your request has been processed.</p>"
+        },
+        "toRecipients": [
+            {
+                "emailAddress": {
+                    "address": "approver@example.com"
+                }
+            },
+            {
+                "emailAddress": {
+                    "address": "creator@example.com"
+                }
+            }
+        ],
+        "from": {
+            "emailAddress": {
+                "address": "noreply@yourdomain.com"
+            }
+        }
+    },
+    "saveToSentItems": "false"
+}
+
+# Set the authorization header
+headers = {
+    'Authorization': f'Bearer {access_token}',
+    'Content-Type': 'application/json'
+}
+
+# Send the email using POST request
+response = requests.post(graph_api_url, json=email_payload, headers=headers)
+
+if response.status_code == 202:
+    print('Email sent successfully')
+else:
+    print(f'Failed to send email: {response.status_code}, {response.text}')
+```
+
+### 6. **Integrate Email Sending After Updating Main Table**
+
+Now, after you update the records in your main table, trigger the email by calling the function that sends the email using Microsoft Graph API.
+
+Example in your PUT handler:
+```python
+def send_email_to_users(approver_email, creator_email):
+    # Code to acquire access token and send email here
+    ...
+    # Email sending logic from above example
+    ...
+
+# After updating the main table
+send_email_to_users(approver_email, creator_email)
+```
+
+### 7. **Deploy the Application**
+
+Once the code is tested locally, ensure that your backend is properly deployed to Azure or your infrastructure, and the service account or shared mailbox has appropriate permissions to send emails.
+
+---
+
+### Summary of Steps:
+1. **Azure AD Application Permissions**: Add `Mail.Send` application permission in Azure AD and grant admin consent.
+2. **Service Account or Shared Mailbox**: Ensure you have a service account (like `noreply@wipro.com`) or a shared mailbox from which to send emails.
+3. **MSAL Client Credentials Flow**: Use MSAL to get an access token with the `client credentials flow`.
+4. **Send Emails with Microsoft Graph API**: Use the token to call the Microsoft Graph API to send emails to the approver and the request creator.
+5. **Integrate in Code**: Trigger the email after updating the main table.
+
+This approach avoids using any user’s credentials and leverages the service account (or shared mailbox) for email sending. Let me know if you need any further clarification!
+
+
+
+
+
+
+
 You're correct that in most cases, when users authenticate via OAuth2, the access token is tied to their credentials, and any action (such as sending emails) will be performed on their behalf. However, in your scenario, you want to send emails from a **service account** or **shared mailbox** instead of the logged-in user’s account. Here's how to handle it in your setup using Microsoft Graph API:
 
 ### Key Concepts:
