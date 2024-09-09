@@ -1,4 +1,37 @@
 
+# Insert patterns and fields only after validation
+serial_number = 1  # Initialize a serial number counter outside the loop
+
+for pattern in data['pattern']:
+    max_pattern += 1
+    for field in pattern['fields']:
+        new_entry = VolumeStoreConfigRequests(
+            request_id=new_request.request_id,
+            workflow_id=workflow_id,
+            serial_number=serial_number,  # Use the continuous serial number
+            pattern=max_pattern,
+            process_name_id=process_name_id,
+            business_level_id=business_level_id,
+            delivery_service_id=delivery_service_id,
+            activity_key_name=field['keyName'],
+            activity_key_layout=field['layout'],
+            activity_key_type=field['type'],
+            volume_type=field.get('volumeType'),
+            is_value=field.get('selectedValue', 'no') == 'yes',
+            field_name=field.get('fieldName'),
+            field_layout=field.get('fieldLayout'),
+            status=field.get('status'),
+            is_active=True,
+            status_ar="open",
+            modified_date=datetime.utcnow(),
+        )
+        session.add(new_entry)
+        serial_number += 1  # Increment the serial number for each field across all patterns
+
+
+
+
+
 
 import concurrent.futures
 
