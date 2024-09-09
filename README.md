@@ -1,4 +1,45 @@
 
+@cross_origin()
+@jwt_required()
+def delete(self, id):
+    try:
+        with session_scope('DESIGNER') as session:
+            # Fetch the specific KeynameStoreConfigRequests record to be deleted
+            keyname = session.query(KeynameStoreConfigRequests).get(id)
+            if not keyname:
+                return {'message': 'Keyname entry not found'}, 404
+
+            # Mark the keyname entry as inactive
+            keyname.is_active = False
+
+            # Check if there are any other active records associated with the same request_id
+            other_keynames = session.query(KeynameStoreConfigRequests).filter_by(
+                request_id=keyname.request_id, 
+                is_active=True
+            ).count()
+
+            # If no other active records exist for this request_id, delete the request from KeynameStoreRequests
+            if other_keynames == 0:
+                request_entry = session.query(KeynameStoreRequests).filter_by(id=keyname.request_id).first()
+                if request_entry:
+                    session.delete(request_entry)
+
+            # Commit the changes
+            session.commit()
+
+        return {'message': 'Keyname entry deleted successfully'}, 200
+    except Exception as e:
+        logging.error(f"Error occurred during deletion: {str(e)}")
+        return {'message': 'An error occurred', 'error': str(e)}, 500
+
+
+
+
+
+
+
+
+
 Certainly! Let's walk through the entire process from the beginning to set up email triggering using Microsoft Graph API with a service account or shared mailbox after updating your main table.
 
 ### 1. **Register Your Application in Azure AD (Already Done)**
