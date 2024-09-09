@@ -1,4 +1,80 @@
 
+
+{
+  "workflowId": 123,             // Workflow ID
+  "processNameId": 456,          // Process Name ID
+  "businessLevelId": 789,        // Business Level ID
+  "deliveryServiceId": 101112,   // Delivery Service ID
+  "pattern": [
+    {
+      "name": "Pattern 1",        // Name of the pattern
+      "fields": [
+        {
+          "keyName": "Field1",    // Key name of the field
+          "layout": "Layout1",    // Layout of the field
+          "type": "Text",         // Type of the field
+          "volumeType": "Input",  // Type of volume
+          "selectedValue": "yes", // Is value selected
+          "fieldName": "Field1Name", // Field name
+          "fieldLayout": "Layout1",  // Field layout
+          "status": "active"      // Status of the field
+        },
+        {
+          "keyName": "Field2",
+          "layout": "Layout2",
+          "type": "Button",
+          "volumeType": "Action",
+          "selectedValue": "no",
+          "fieldName": "Field2Name",
+          "fieldLayout": "Layout2",
+          "status": "inactive"
+        }
+      ]
+    },
+    {
+      "name": "Pattern 2",
+      "fields": [
+        {
+          "keyName": "Field3",
+          "layout": "Layout3",
+          "type": "Text",
+          "volumeType": "Input",
+          "selectedValue": "no",
+          "fieldName": "Field3Name",
+          "fieldLayout": "Layout3",
+          "status": "active"
+        },
+        {
+          "keyName": "Field4",
+          "layout": "Layout4",
+          "type": "Button",
+          "volumeType": "Action",
+          "selectedValue": "yes",
+          "fieldName": "Field4Name",
+          "fieldLayout": "Layout4",
+          "status": "active"
+        }
+      ]
+    }
+  ]
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Insert patterns and fields only after validation
 serial_number = 1  # Initialize a serial number counter outside the loop
 
