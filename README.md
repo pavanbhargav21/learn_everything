@@ -1,4 +1,144 @@
 
+
+import concurrent.futures
+
+class VolumeMatrixMakerResource(Resource):
+    @cross_origin()
+    @jwt_required()
+    def post(self):
+        with session_scope('DESIGNER') as session:
+            data = request.get_json()
+            if not data:
+                return {"message": "Invalid JSON payload found"}, 400
+
+            # Extract JWT claims
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            # Extract important IDs from payload
+            workflow_id = data['workflowId']
+            process_name_id = data['processNameId']
+            business_level_id = data['businessLevelId']
+            delivery_service_id = data['deliveryServiceId']
+
+            # Step 1: Validate the data and check for duplicates, overlaps, etc.
+            total_field_count = sum(len(pattern['fields']) for pattern in data['pattern'])
+            max_pattern = session.query(func.max(VolumeStoreConfigRequests.pattern)).filter(
+                VolumeStoreConfigRequests.workflow_id == workflow_id,
+                VolumeStoreConfigRequests.is_active == True
+            ).scalar() or 0
+
+            # Track all unique key sets and check for any overlap
+            all_key_sets = set()
+
+            def check_existing_volume(key_names):
+                # Query to check existing volume entry
+                return session.query(VolumeMatrix).filter(
+                    VolumeMatrix.workflow_id == workflow_id,
+                    VolumeMatrix.process_name_id == process_name_id,
+                    VolumeMatrix.business_level_id == business_level_id,
+                    VolumeMatrix.delivery_service_id == delivery_service_id,
+                    VolumeMatrix.activity_key_name.in_(key_names),
+                    VolumeMatrix.is_active == True
+                ).first()
+
+            def check_existing_config(key_names):
+                # Query to check existing config entry
+                return session.query(VolumeStoreConfigRequests).filter(
+                    VolumeStoreConfigRequests.workflow_id == workflow_id,
+                    VolumeStoreConfigRequests.process_name_id == process_name_id,
+                    VolumeStoreConfigRequests.business_level_id == business_level_id,
+                    VolumeStoreConfigRequests.delivery_service_id == delivery_service_id,
+                    VolumeStoreConfigRequests.activity_key_name.in_(key_names),
+                    VolumeStoreConfigRequests.is_moved_to_main == False
+                ).first()
+
+            # Iterate through patterns
+            for pattern in data['pattern']:
+                key_names = [field['keyName'] for field in pattern['fields']]
+
+                # Ensure each pattern has a "Button" type
+                if not any(field['type'] == 'Button' for field in pattern['fields']):
+                    return {"message": f"Pattern {pattern['name']} must contain at least one 'Button' type field."}, 400
+
+                # Check for duplicate activity_key_names within the pattern
+                if len(key_names) != len(set(key_names)):
+                    return {"message": f"Duplicate keys found within pattern {pattern['name']}."}, 400
+
+                # Check for duplicate sets of keys across patterns
+                key_set = frozenset(key_names)
+                if key_set in all_key_sets:
+                    return {"message": f"Duplicate key set found across patterns in {pattern['name']}."}, 400
+                all_key_sets.add(key_set)
+
+                # Step 2: Run both queries in parallel using multi-threading
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future_volume = executor.submit(check_existing_volume, key_names)
+                    future_config = executor.submit(check_existing_config, key_names)
+
+                    # Wait for both futures to complete
+                    existing_volume_entry = future_volume.result()
+                    existing_config_entry = future_config.result()
+
+                # Check results from both queries
+                if existing_volume_entry:
+                    return {"message": "Volume Entry Already Exists in Volume Store"}, 400
+
+                if existing_config_entry:
+                    return {"message": f"Entry already exists with Request ID: {existing_config_entry.request_id}"}, 400
+
+            # Step 3: If all checks pass, create the request and insert data
+            new_request = VolumeStoreRequests(
+                count=total_field_count,
+                req_created_date=datetime.utcnow(),
+                modified_date=datetime.utcnow(),
+                created_by=user_id,
+                creator_name=user_name,
+                creator_email=user_email,
+                is_active=True,
+                status="open",
+            )
+            session.add(new_request)
+            session.flush()  # Get the request ID after flush
+
+            # Insert patterns and fields only after validation
+            for pattern in data['pattern']:
+                max_pattern += 1
+                for count, field in enumerate(pattern['fields']):
+                    new_entry = VolumeStoreConfigRequests(
+                        request_id=new_request.request_id,
+                        workflow_id=workflow_id,
+                        serial_number=count + 1,
+                        pattern=max_pattern,
+                        process_name_id=process_name_id,
+                        business_level_id=business_level_id,
+                        delivery_service_id=delivery_service_id,
+                        activity_key_name=field['keyName'],
+                        activity_key_layout=field['layout'],
+                        activity_key_type=field['type'],
+                        volume_type=field.get('volumeType'),
+                        is_value=field.get('selectedValue', 'no') == 'yes',
+                        field_name=field.get('fieldName'),
+                        field_layout=field.get('fieldLayout'),
+                        status=field.get('status'),
+                        is_active=True,
+                        status_ar="open",
+                        modified_date=datetime.utcnow(),
+                    )
+                    session.add(new_entry)
+
+        return {"message": "Volume Matrix added successfully"}, 201
+
+
+
+
+
+
+
+
+
 class VolumeMatrixMakerResource(Resource):
     @cross_origin()
     @jwt_required()
