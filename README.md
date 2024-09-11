@@ -1,4 +1,271 @@
 
+
+import pandas as pd
+from flask import request, jsonify
+from flask_restful import Resource
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from sqlalchemy.exc import IntegrityError
+from werkzeug.utils import secure_filename
+import os
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+
+class UnifiedFileUpload(Resource):
+    @jwt_required()
+    def post(self):
+        try:
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            if 'file' not in request.files:
+                return jsonify({'message': 'No file part in the request'}), 400
+
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({'message': 'No selected file'}), 400
+
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                file_path = os.path.join('uploads', filename)
+                file.save(file_path)
+
+                excel_data = pd.ExcelFile(file_path)
+
+                # Load data from each sheet
+                app_store_data = pd.read_excel(excel_data, sheet_name='APP_STORE')
+                key_store_data = pd.read_excel(excel_data, sheet_name='KEY_STORE')
+                volume_store_data = pd.read_excel(excel_data, sheet_name='VOLUME_STORE')
+
+                # Validate columns for APP_STORE
+                app_store_columns = ['WorkflowName', 'WorkflowUrl', 'Environment', 'FullScreenCapture', 'WindowTitles']
+                if not all(col in app_store_data.columns for col in app_store_columns):
+                    return jsonify({'message': 'Invalid columns in APP_STORE sheet'}), 400
+
+                # Validate columns for KEY_STORE
+                key_store_columns = ['BusinessLevel', 'DeliveryService', 'ProcessName', 'WorkflowName', 'UniqueKey', 'KeyName', 'Layout', 'Remarks']
+                if not all(col in key_store_data.columns for col in key_store_columns):
+                    return jsonify({'message': 'Invalid columns in KEY_STORE sheet'}), 400
+
+                # Validate columns for VOLUME_STORE
+                volume_store_columns = ['BusinessLevel', 'DeliveryService', 'ProcessName', 'WorkflowName', 'Pattern', 'KeyName', 'KeyType', 'Layout', 'VolumeType', 'Value', 'FieldName', 'FieldLayout', 'Status']
+                if not all(col in volume_store_data.columns for col in volume_store_columns):
+                    return jsonify({'message': 'Invalid columns in VOLUME_STORE sheet'}), 400
+
+                # Multithreading for parallel querying
+                with ThreadPoolExecutor() as executor:
+                    with session_scope('DESIGNER') as session:
+                        # Query workflows, whitelist store, keyname store, volume store, and main tables concurrently
+                        future_workflows = executor.submit(session.query, Workflow).all()
+                        future_whitelist_store = executor.submit(session.query, WhitelistStoreConfigRequests).all()
+                        future_keyname_store = executor.submit(session.query, KeynameStoreConfigRequests).all()
+                        future_volume_store = executor.submit(session.query, VolumeStoreConfigRequests).all()
+
+                        # Main tables
+                        future_whitelist = executor.submit(session.query, Whitelist).all()
+                        future_keyname_mapping = executor.submit(session.query, KeynameMapping).all()
+                        future_volume_matrix = executor.submit(session.query, VolumeMatrix).all()
+
+                        # Get results of all futures (this will wait for all queries to complete)
+                        workflows = future_workflows.result()
+                        whitelist_store_configs = future_whitelist_store.result()
+                        keyname_store_configs = future_keyname_store.result()
+                        volume_store_configs = future_volume_store.result()
+                        whitelist_data = future_whitelist.result()
+                        keyname_mapping_data = future_keyname_mapping.result()
+                        volume_matrix_data = future_volume_matrix.result()
+
+                        # Create dictionaries/sets for quick lookups
+                        workflow_dict = {wf.workflow_name: wf.id for wf in workflows}
+                        whitelist_store_set = set((wsc.workflow_id, wsc.workflow_url, wsc.environment) for wsc in whitelist_store_configs)
+                        keyname_store_set = set((knsc.workflow_id, knsc.activity_key_name) for knsc in keyname_store_configs)
+                        volume_store_set = set((vsc.workflow_id, vsc.pattern, vsc.activity_key_name) for vsc in volume_store_configs)
+
+                        whitelist_set = set((w.workflow_id, w.workflow_url, w.environment) for w in whitelist_data)
+                        keyname_mapping_set = set((kn.workflow_id, kn.activity_key_name) for kn in keyname_mapping_data)
+                        volume_matrix_set = set((vm.workflow_id, vm.pattern, vm.activity_key_name) for vm in volume_matrix_data)
+
+                        # Process APP_STORE data
+                        app_store_entries = app_store_data.to_dict(orient='records')
+                        app_store_request_id = None
+                        serial_number = 1  # Initialize serial number
+
+                        for entry in app_store_entries:
+                            workflow_name = entry['WorkflowName']
+                            workflow_id = workflow_dict.get(workflow_name)
+
+                            if workflow_id is None:
+                                return jsonify({'message': f'Workflow "{workflow_name}" does not exist in APP_STORE sheet'}), 400
+
+                            # Check duplicates in both store and main tables
+                            if (workflow_id, entry['WorkflowUrl'], entry['Environment']) in whitelist_store_set or (workflow_id, entry['WorkflowUrl'], entry['Environment']) in whitelist_set:
+                                return jsonify({'message': f'Duplicate entry found in APP_STORE for Workflow "{workflow_name}"'}), 400
+
+                            if not app_store_request_id:
+                                new_request = WhitelistStoreRequests(
+                                    count=len(app_store_entries),
+                                    req_created_date=datetime.utcnow(),
+                                    modified_date=datetime.utcnow(),
+                                    created_by=user_id,
+                                    creator_name=user_name,
+                                    creator_email=user_email,
+                                    is_active=True,
+                                    status="open",
+                                )
+                                session.add(new_request)
+                                session.flush()
+                                app_store_request_id = new_request.request_id
+
+                            # Add to session
+                            new_whitelist_config = WhitelistStoreConfigRequests(
+                                request_id=app_store_request_id,
+                                workflow_id=workflow_id,
+                                serial_number=serial_number,
+                                workflow_name=workflow_name,
+                                workflow_url=entry['WorkflowUrl'],
+                                environment=entry['Environment'],
+                                is_active=True,
+                                status_ar="open",
+                                modified_date=datetime.utcnow(),
+                                window_titles=entry['WindowTitles'],
+                                is_full_image_capture=entry['FullScreenCapture'] == 'yes',
+                            )
+                            session.add(new_whitelist_config)
+                            serial_number += 1
+
+                        # Process KEY_STORE data
+                        key_store_entries = key_store_data.to_dict(orient='records')
+                        key_store_request_id = None
+                        seen_keynames = set()
+
+                        for entry in key_store_entries:
+                            workflow_name = entry['WorkflowName']
+                            workflow_id = workflow_dict.get(workflow_name)
+
+                            if workflow_id is None:
+                                return jsonify({'message': f'Workflow "{workflow_name}" does not exist in KEY_STORE sheet'}), 400
+
+                            key_name = entry['KeyName']
+                            if key_name in seen_keynames:
+                                return jsonify({'message': f'Duplicate KeyName "{key_name}" in KEY_STORE sheet'}), 400
+
+                            seen_keynames.add(key_name)
+
+                            # Check duplicates in both store and main tables
+                            if (workflow_id, key_name) in keyname_store_set or (workflow_id, key_name) in keyname_mapping_set:
+                                return jsonify({'message': f'Duplicate KeyName "{key_name}" for Workflow "{workflow_name}" in KEY_STORE'}), 400
+
+                            if not key_store_request_id:
+                                new_request = KeynameStoreRequests(
+                                    count=len(key_store_entries),
+                                    req_created_date=datetime.utcnow(),
+                                    modified_date=datetime.utcnow(),
+                                    created_by=user_id,
+                                    creator_name=user_name,
+                                    creator_email=user_email,
+                                    is_active=True,
+                                    status="open",
+                                )
+                                session.add(new_request)
+                                session.flush()
+                                key_store_request_id = new_request.request_id
+
+                            # Add to session
+                            new_keyname_config = KeynameStoreConfigRequests(
+                                request_id=key_store_request_id,
+                                workflow_id=workflow_id,
+                                serial_number=serial_number,
+                                business_level_id=entry['BusinessLevel'],
+                                delivery_service_id=entry['DeliveryService'],
+                                process_name_id=entry['ProcessName'],
+                                activity_key_name=key_name,
+                                activity_key_layout=entry['Layout'],
+                                is_unique=entry['UniqueKey'] == 'yes',
+                                remarks=entry['Remarks'],
+                                is_active=True,
+                                status_ar='open'
+                            )
+                            session.add(new_keyname_config)
+                            serial_number += 1
+
+                        # Process VOLUME_STORE data
+                        volume_store_entries = volume_store_data.to_dict(orient='records')
+                        volume_store_request_id = None
+
+                        for entry in volume_store_entries:
+                            workflow_name = entry['WorkflowName']
+                            workflow_id = workflow_dict.get(workflow_name)
+
+                            if workflow_id is None:
+                                return jsonify({'message': f'Workflow "{workflow_name}" does not exist in VOLUME_STORE sheet'}), 400
+
+                            pattern = entry['Pattern']
+                            key_name = entry['KeyName']
+
+                            # Check duplicates in both store and main tables
+                            if (workflow_id, pattern, key_name) in volume_store_set or (workflow_id, pattern, key_name) in volume_matrix_set:
+                                return jsonify({'message': f'Duplicate entry found in VOLUME_STORE for Workflow "{workflow_name}" and Pattern "{pattern}"}'), 400
+
+                            if not volume_store_request_id:
+                                new_request = VolumeStoreRequests(
+                                    count=len(volume_store_entries),
+                                    req_created_date=datetime.utcnow(),
+
+req_created_date=datetime.utcnow(),
+                                modified_date=datetime.utcnow(),
+                                created_by=user_id,
+                                creator_name=user_name,
+                                creator_email=user_email,
+                                is_active=True,
+                                status="open",
+                                volume_type=entry['VolumeType'],
+                                field_name=entry['FieldName'],
+                                field_layout=entry['FieldLayout'],
+                                status_ar=entry['Status']
+                            )
+                            session.add(new_request)
+                            session.flush()
+                            volume_store_request_id = new_request.request_id
+
+                        # Add to session
+                        new_volume_config = VolumeStoreConfigRequests(
+                            request_id=volume_store_request_id,
+                            workflow_id=workflow_id,
+                            serial_number=serial_number,
+                            business_level_id=entry['BusinessLevel'],
+                            delivery_service_id=entry['DeliveryService'],
+                            process_name_id=entry['ProcessName'],
+                            pattern=pattern,
+                            activity_key_name=key_name,
+                            key_type=entry['KeyType'],
+                            activity_key_layout=entry['Layout'],
+                            volume_type=entry['VolumeType'],
+                            field_name=entry['FieldName'],
+                            field_layout=entry['FieldLayout'],
+                            value=entry['Value'],
+                            status_ar=entry['Status'],
+                            is_active=True,
+                            modified_date=datetime.utcnow()
+                        )
+                        session.add(new_volume_config)
+                        serial_number += 1
+
+                return jsonify({'message': 'File processed and data added successfully'}), 200
+
+            return jsonify({'message': 'Invalid file format'}), 400
+
+        except IntegrityError as e:
+            session.rollback()
+            return jsonify({'message': f'Database Integrity Error: {str(e)}'}), 500
+        except Exception as e:
+            return jsonify({'message': f'An error occurred: {str(e)}'}), 500
+
+
+
+
+
+
 import pandas as pd
 from flask import request, jsonify
 from flask_restful import Resource
