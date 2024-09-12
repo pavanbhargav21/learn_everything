@@ -1,3 +1,125 @@
+To handle the case where you want to mark existing approval records as inactive before adding new ones, you can do the following:
+
+1. Mark existing approvers as inactive:
+
+Before adding new approvers, query the KeynameStoreRequestsApprovals table for the specific request_id and update the is_active field of all existing approvers to False.
+
+
+
+2. Add new approvers:
+
+After marking the existing approvers inactive, insert the new approval records.
+
+
+
+
+Here’s how you can update the put method:
+
+Updated Code:
+
+@cross_origin()
+@jwt_required()
+def put(self):
+    try:
+        data = request.get_json()
+        request_ids = data.get('requestIds', [])
+        approvers = data.get('approverInfo', [])
+
+        if not request_ids:
+            return jsonify({"error": "No Request IDs provided"}), 400
+        if not approvers:
+            return jsonify({"error": "No approvers provided"}), 400
+
+        with session_scope('DESIGNER') as session:
+            # Update the status of KeynameStoreRequests to 'pending'
+            session.query(KeynameStoreRequests).filter(
+                KeynameStoreRequests.request_id.in_(request_ids)
+            ).update(
+                {KeynameStoreRequests.status: 'pending'},
+                synchronize_session=False
+            )
+
+            # Update the status of KeynameStoreConfigRequests based on request IDs and IsMoveDomain=False
+            session.query(KeynameStoreConfigRequests).filter(
+                KeynameStoreConfigRequests.request_id.in_(request_ids),
+                KeynameStoreConfigRequests.IsMoveDomain == False  # Check if IsMoveDomain is False
+            ).update(
+                {KeynameStoreConfigRequests.status_ar: 'pending'},
+                synchronize_session=False
+            )
+
+            approver_entries = []
+            for request_id in request_ids:
+                # Set existing approvers' `is_active` field to False
+                session.query(KeynameStoreRequestsApprovals).filter(
+                    KeynameStoreRequestsApprovals.request_id == request_id,
+                    KeynameStoreRequestsApprovals.is_active == True
+                ).update(
+                    {KeynameStoreRequestsApprovals.is_active: False},
+                    synchronize_session=False
+                )
+
+                # Add new approvers for each request ID
+                for approver in approvers:
+                    approver_entries.append(
+                        KeynameStoreRequestsApprovals(
+                            request_id=request_id,
+                            approver_id=approver.get('id'),
+                            approver_email=approver.get('email'),
+                            approver_name=approver.get('name'),
+                            is_active=True  # Ensure the new record is active
+                        )
+                    )
+
+            # Add all new approver entries to the session in bulk
+            if approver_entries:
+                session.bulk_save_objects(approver_entries)
+
+            return {'message': f"{len(request_ids)} request(s) have been sent for approval"}, 200
+
+    except SQLAlchemyError as e:
+        logging.error(f"SQLAlchemy Error Occurred: {str(e)}")
+        return jsonify({'status': 'error', 'message': 'Database error occurred'}), 500
+    except Exception as e:
+        logging.error(f"Error Occurred: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+Key Changes:
+
+1. Mark Existing Approvers as Inactive:
+
+I added a query to mark all existing approvers for the given request_id as inactive. This is done with:
+
+session.query(KeynameStoreRequestsApprovals).filter(
+    KeynameStoreRequestsApprovals.request_id == request_id,
+    KeynameStoreRequestsApprovals.is_active == True
+).update(
+    {KeynameStoreRequestsApprovals.is_active: False},
+    synchronize_session=False
+)
+
+
+
+2. Adding New Approver Entries:
+
+After marking the old approvers as inactive, I added the new approvers, ensuring the is_active field is set to True for the new records.
+
+
+
+
+Additional Considerations:
+
+Make sure the is_active column is defined in your KeynameStoreRequestsApprovals model and is a boolean field.
+
+Ensure proper indexes are in place for filtering efficiently, especially on the request_id and is_active fields, to avoid performance issues.
+
+
+This approach allows you to keep the history of approvers while ensuring that only the latest approvers are marked as active.
+
+
+
+
+
 
 
 import pandas as pd
