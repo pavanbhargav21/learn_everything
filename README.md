@@ -1,3 +1,54 @@
+def process_data(key_type, volume_type, field_name, field_layout, status):
+    # Initialize with the original values
+    processed_data = {
+        'field_name': field_name,
+        'field_layout': field_layout,
+        'status': status,
+        'value': None  # We'll set this to True or None based on conditions
+    }
+
+    # If key_type is 'label', set all fields to None
+    if key_type == 'label':
+        processed_data['field_name'] = None
+        processed_data['field_layout'] = None
+        processed_data['status'] = None
+        processed_data['value'] = None
+
+    # If key_type is 'button'
+    elif key_type == 'button':
+        # Always set field_layout to None
+        processed_data['field_layout'] = None
+
+        if volume_type == 'value':
+            # Set field_name, field_layout, and status to None
+            processed_data['field_name'] = None
+            processed_data['status'] = None
+
+        elif volume_type == 'right':
+            # Set value to True
+            processed_data['value'] = True
+
+    # If key_type is 'field'
+    elif key_type == 'field':
+        if volume_type == 'value':
+            # Set value to True and ignore field_name, field_layout, and status
+            processed_data['value'] = True
+            processed_data['field_name'] = None
+            processed_data['field_layout'] = None
+            processed_data['status'] = None
+
+        elif volume_type == 'field':
+            # Keep field_name, field_layout, and status as provided
+            processed_data['value'] = None  # No change needed for 'value'
+
+    return processed_data
+
+
+
+
+
+
+
 
 
 def validate_volume_store_entry(entry):
