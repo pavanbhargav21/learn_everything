@@ -1,5 +1,120 @@
 
 def process_key_store(self, key_store_data, key_store_dict, key_store_set, session, user_id, user_name, user_email):
+    # Fetch all IDs once
+    business_function_dict, delivery_function_dict, process_function_dict, workflow_dict = get_all_ids(session)
+
+    key_store_entries = key_store_data.to_dict(orient='records')
+    key_store_request_id = None
+    serial_number = 1
+
+    for entry in key_store_entries:
+        workflow_name = entry['WorkflowName']
+        workflow_id = key_store_dict.get(workflow_name)
+
+        if workflow_id is None:
+            raise ValueError(f'Workflow "{workflow_name}" does not exist in KEY_STORE sheet')
+
+        key_name = entry['KeyName']
+        key_type = entry['KeyType'].lower()
+        volume_type = entry['VolumeType'].lower()
+
+        # Validate key_type and volume_type
+        if key_type not in ['label', 'button', 'field']:
+            raise ValueError(f'Invalid keytype "{key_type}" for Workflow "{workflow_name}"')
+
+        if volume_type not in ['value', 'volume']:
+            raise ValueError(f'Invalid volume type "{volume_type}" for Workflow "{workflow_name}"')
+
+        # Check for duplicate entry
+        if (workflow_id, key_name) in key_store_set:
+            raise ValueError(f'Duplicate entry found in KEY_STORE for Workflow {workflow_name} and Key {key_name}')
+
+        if not key_store_request_id:
+            new_request = KeyStoreRequests(
+                count=len(key_store_entries),
+                req_created_date=datetime.utcnow(),
+                modified_date=datetime.utcnow(),
+                created_by=user_id,
+                creator_name=user_name,
+                creator_email=user_email,
+                is_active=True,
+                status="open",
+            )
+            session.add(new_request)
+            session.flush()
+            key_store_request_id = new_request.request_id
+
+        # Fetch IDs from pre-fetched dictionaries
+        business_function_id = business_function_dict.get(entry['BusinessLevel'])
+        delivery_function_id = delivery_function_dict.get(entry['DeliveryService'])
+        process_function_id = process_function_dict.get(entry['ProcessName'])
+
+        if business_function_id is None:
+            raise ValueError(f'Business Function "{entry["BusinessLevel"]}" does not exist')
+        if delivery_function_id is None:
+            raise ValueError(f'Delivery Function "{entry["DeliveryService"]}" does not exist')
+        if process_function_id is None:
+            raise ValueError(f'Process Function "{entry["ProcessName"]}" does not exist')
+
+        # Determine field values based on key_type and volume_type
+        layout = entry['Layout'] if key_type == 'field' else None
+        field_name = entry['FieldName'] if volume_type == 'volume' and key_type != 'label' else None
+        field_layout = entry['FieldLayout'] if volume_type == 'volume' and key_type != 'label' else None
+        status = entry['Status'] if volume_type == 'volume' and key_type != 'label' else None
+        value = volume_type == 'value' or key_type == 'button'
+
+        new_key_config = KeyStoreConfigRequests(
+            request_id=key_store_request_id,
+            workflow_id=workflow_id,
+            serial_number=serial_number,
+            business_level_id=business_function_id,
+            delivery_service_id=delivery_function_id,
+            process_name_id=process_function_id,
+            key_name=key_name,
+            key_type=key_type,
+            volume_type=volume_type,
+            is_value=value,
+            field_name=field_name,
+            field_layout=field_layout,
+            status=status,
+            is_active=True,
+            status_ar="open",
+            modified_date=datetime.utcnow()
+        )
+        session.add(new_key_config)
+        serial_number += 1
+
+
+
+
+
+
+
+def get_all_ids(session):
+    # Fetch all records for business functions
+    business_functions = session.query(SupplierFunctionMaster).all()
+    business_function_dict = {bf.sf_name: bf.id for bf in business_functions}
+
+    # Fetch all records for delivery functions
+    delivery_functions = session.query(DeliveryFunctionMaster).all()
+    delivery_function_dict = {df.df_name: df.id for df in delivery_functions}
+
+    # Fetch all records for process functions
+    process_functions = session.query(ProcessFunctionMaster).all()
+    process_function_dict = {pf.pf_name: pf.id for pf in process_functions}
+
+    # Fetch all records for workflows
+    workflows = session.query(WorkflowMaster).all()
+    workflow_dict = {wf.workflow_name: wf.id for wf in workflows}
+
+    return business_function_dict, delivery_function_dict, process_function_dict, workflow_dict
+
+
+
+
+
+
+def process_key_store(self, key_store_data, key_store_dict, key_store_set, session, user_id, user_name, user_email):
     key_store_entries = key_store_data.to_dict(orient='records')
     key_store_request_id = None
     serial_number = 1
