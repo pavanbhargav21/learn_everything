@@ -1,3 +1,79 @@
+
+def process_key_store(self, key_store_data, key_store_dict, key_store_set, session, user_id, user_name, user_email):
+    key_store_entries = key_store_data.to_dict(orient='records')
+    key_store_request_id = None
+    serial_number = 1
+
+    for entry in key_store_entries:
+        workflow_name = entry['WorkflowName']
+        workflow_id = key_store_dict.get(workflow_name)
+
+        if workflow_id is None:
+            raise ValueError(f'Workflow "{workflow_name}" does not exist in KEY_STORE sheet')
+
+        key_name = entry['KeyName']
+        key_type = entry['KeyType'].lower()
+        volume_type = entry['VolumeType'].lower()
+
+        # Validate key_type and volume_type
+        if key_type not in ['label', 'button', 'field']:
+            raise ValueError(f'Invalid keytype "{key_type}" for Workflow "{workflow_name}"')
+
+        if volume_type not in ['value', 'volume']:
+            raise ValueError(f'Invalid volume type "{volume_type}" for Workflow "{workflow_name}"')
+
+        # Check for duplicate entry
+        if (workflow_id, key_name) in key_store_set:
+            raise ValueError(f'Duplicate entry found in KEY_STORE for Workflow {workflow_name} and Key {key_name}')
+
+        if not key_store_request_id:
+            new_request = KeyStoreRequests(
+                count=len(key_store_entries),
+                req_created_date=datetime.utcnow(),
+                modified_date=datetime.utcnow(),
+                created_by=user_id,
+                creator_name=user_name,
+                creator_email=user_email,
+                is_active=True,
+                status="open",
+            )
+            session.add(new_request)
+            session.flush()
+            key_store_request_id = new_request.request_id
+
+        # Determine field values based on key_type and volume_type
+        layout = entry['Layout'] if key_type == 'field' else None
+        field_name = entry['FieldName'] if volume_type == 'volume' and key_type != 'label' else None
+        field_layout = entry['FieldLayout'] if volume_type == 'volume' and key_type != 'label' else None
+        status = entry['Status'] if volume_type == 'volume' and key_type != 'label' else None
+        value = volume_type == 'value' or key_type == 'button'
+
+        new_key_config = KeyStoreConfigRequests(
+            request_id=key_store_request_id,
+            workflow_id=workflow_id,
+            serial_number=serial_number,
+            business_level_id=entry['BusinessLevel'],
+            delivery_service_id=entry['DeliveryService'],
+            process_name_id=entry['ProcessName'],
+            key_name=key_name,
+            key_type=key_type,
+            volume_type=volume_type,
+            is_value=value,
+            field_name=field_name,
+            field_layout=field_layout,
+            status=status,
+            is_active=True,
+            status_ar="open",
+            modified_date=datetime.utcnow()
+        )
+        session.add(new_key_config)
+        serial_number += 1
+
+
+
+
+
+
 from flask import jsonify, request
 from flask_restful import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
