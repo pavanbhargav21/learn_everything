@@ -1,3 +1,80 @@
+def validate_volume_store_entry(entry):
+    key_type = entry.get('KeyType')
+    volume_type = entry.get('VolumeType')
+    
+    # Initialize the fields
+    layout = entry.get('Layout')
+    value = entry.get('Value')
+    field_name = entry.get('FieldName')
+    field_layout = entry.get('FieldLayout')
+    status = entry.get('Status')
+
+    # If KeyType is 'Label', all other fields should be None
+    if key_type == 'Label':
+        if any([layout, volume_type, value, field_name, field_layout, status]):
+            raise ValueError("For 'Label', all other fields must be null.")
+        return True
+
+    # If KeyType is 'Button'
+    elif key_type == 'Button':
+        if layout is not None:
+            raise ValueError("For 'Button', 'Layout' must be null.")
+        if not volume_type:
+            raise ValueError("For 'Button', 'VolumeType' must be defined.")
+        
+        # If VolumeType is 'Value'
+        if volume_type == 'Value':
+            if not value or any([field_name, field_layout, status]):
+                raise ValueError("For 'Button' with 'Value', only 'Value' must be populated, others null.")
+        
+        # If VolumeType is 'Field'
+        elif volume_type == 'Field':
+            if any([not field_name, not field_layout, not status]) or value:
+                raise ValueError("For 'Button' with 'Field', 'FieldName', 'FieldLayout', and 'Status' must be populated, and 'Value' should be false.")
+        else:
+            raise ValueError("Invalid 'VolumeType' for 'Button'.")
+        return True
+
+    # If KeyType is 'Field'
+    elif key_type == 'Field':
+        if not layout or not volume_type:
+            raise ValueError("For 'Field', both 'Layout' and 'VolumeType' must be defined.")
+        
+        # If VolumeType is 'Value'
+        if volume_type == 'Value':
+            if not value or any([field_name, field_layout, status]):
+                raise ValueError("For 'Field' with 'Value', only 'Value' should be populated, others null.")
+        
+        # If VolumeType is 'Field'
+        elif volume_type == 'Field':
+            if any([not field_name, not field_layout, not status]) or value:
+                raise ValueError("For 'Field' with 'Field', 'FieldName', 'FieldLayout', and 'Status' must be populated, and 'Value' should be false.")
+        else:
+            raise ValueError("Invalid 'VolumeType' for 'Field'.")
+        return True
+
+    else:
+        raise ValueError("Invalid 'KeyType'.")
+
+# Example of processing volume store entries
+def process_volume_store(entries):
+    for entry in entries:
+        try:
+            validate_volume_store_entry(entry)
+            # Proceed with saving or further processing the entry if validation is successful
+            print(f"Entry {entry['KeyName']} is valid.")
+        except ValueError as e:
+            # Handle invalid entry
+            print(f"Validation error for {entry['KeyName']}: {str(e)}")
+
+
+
+
+
+
+
+
+
 To handle the case where you want to mark existing approval records as inactive before adding new ones, you can do the following:
 
 1. Mark existing approvers as inactive:
