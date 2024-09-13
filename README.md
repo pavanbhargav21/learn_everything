@@ -1,3 +1,171 @@
+
+
+def validate_volume_store_entry(entry):
+    key_type = entry.get('KeyType')
+    volume_type = entry.get('VolumeType')
+    
+    # Initialize the fields
+    layout = entry.get('Layout')
+    value = entry.get('Value')
+    field_name = entry.get('FieldName')
+    field_layout = entry.get('FieldLayout')
+    status = entry.get('Status')
+
+    # If KeyType is 'Label', all other fields should be None
+    if key_type == 'Label':
+        if any([layout, volume_type, value, field_name, field_layout, status]):
+            raise ValueError("For 'Label', all other fields must be null.")
+        return True
+
+    # If KeyType is 'Button'
+    elif key_type == 'Button':
+        if layout is not None:
+            raise ValueError("For 'Button', 'Layout' must be null.")
+        if not volume_type:
+            raise ValueError("For 'Button', 'VolumeType' must be defined.")
+        
+        # If VolumeType is 'Value'
+        if volume_type == 'Value':
+            if not value or any([field_name, field_layout, status]):
+                raise ValueError("For 'Value' VolumeType, 'Value' must be defined and 'FieldName', 'FieldLayout', and 'Status' must be null.")
+    
+    # Other KeyType validation can go here
+    
+    return True
+
+class UnifiedFileUpload(Resource):
+    @jwt_required()
+    def post(self):
+        try:
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            if 'file' not in request.files:
+                return jsonify({'message': 'No file part in the request'}), 400
+
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({'message': 'No selected file'}), 400
+
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                file_path = os.path.join('uploads', filename)
+                file.save(file_path)
+
+                excel_data = pd.ExcelFile(file_path)
+
+                # Load data from each sheet
+                app_store_data = pd.read_excel(excel_data, sheet_name='APP_STORE')
+                key_store_data = pd.read_excel(excel_data, sheet_name='KEY_STORE')
+                volume_store_data = pd.read_excel(excel_data, sheet_name='VOLUME_STORE')
+
+                # Validate columns for APP_STORE, KEY_STORE, and VOLUME_STORE (as in the original code)
+                # ...
+
+                # Multithreading for parallel querying (as in the original code)
+                with ThreadPoolExecutor() as executor:
+                    with session_scope('DESIGNER') as session:
+                        # Query workflows, whitelist store, keyname store, volume store, and main tables concurrently
+                        # ...
+
+                        # Process APP_STORE data (as in the original code)
+                        # ...
+
+                        # Process KEY_STORE data (as in the original code)
+                        # ...
+
+                        # Process VOLUME_STORE data
+                        volume_store_entries = volume_store_data.to_dict(orient='records')
+                        volume_store_request_id = None
+
+                        for entry in volume_store_entries:
+                            workflow_name = entry['WorkflowName']
+                            workflow_id = workflow_dict.get(workflow_name)
+
+                            if workflow_id is None:
+                                return jsonify({'message': f'Workflow "{workflow_name}" does not exist in VOLUME_STORE sheet'}), 400
+
+                            pattern = entry['Pattern']
+                            key_name = entry['KeyName']
+
+                            # Check duplicates in both store and main tables
+                            if (workflow_id, pattern, key_name) in volume_store_set or (workflow_id, pattern, key_name) in volume_matrix_set:
+                                return jsonify({'message': f'Duplicate entry found in VOLUME_STORE for Workflow "{workflow_name}" and Pattern "{pattern}"}'), 400
+
+                            # **Validate the entry using the validate_volume_store_entry function**
+                            try:
+                                validate_volume_store_entry(entry)
+                            except ValueError as ve:
+                                return jsonify({'message': str(ve)}), 400
+
+                            if not volume_store_request_id:
+                                new_request = VolumeStoreRequests(
+                                    count=len(volume_store_entries),
+                                    req_created_date=datetime.utcnow(),
+                                    modified_date=datetime.utcnow(),
+                                    created_by=user_id,
+                                    creator_name=user_name,
+                                    creator_email=user_email,
+                                    is_active=True,
+                                    status="open",
+                                    volume_type=entry['VolumeType'],
+                                    field_name=entry['FieldName'],
+                                    field_layout=entry['FieldLayout'],
+                                    status_ar=entry['Status']
+                                )
+                                session.add(new_request)
+                                session.flush()
+                                volume_store_request_id = new_request.request_id
+
+                            # Add to session after validation
+                            new_volume_config = VolumeStoreConfigRequests(
+                                request_id=volume_store_request_id,
+                                workflow_id=workflow_id,
+                                serial_number=serial_number,
+                                business_level_id=entry['BusinessLevel'],
+                                delivery_service_id=entry['DeliveryService'],
+                                process_name_id=entry['ProcessName'],
+                                pattern=pattern,
+                                activity_key_name=key_name,
+                                key_type=entry['KeyType'],
+                                activity_key_layout=entry['Layout'],
+                                volume_type=entry['VolumeType'],
+                                field_name=entry['FieldName'],
+                                field_layout=entry['FieldLayout'],
+                                value=entry['Value'],
+                                status_ar=entry['Status'],
+                                is_active=True,
+                                modified_date=datetime.utcnow()
+                            )
+                            session.add(new_volume_config)
+                            serial_number += 1
+
+                return jsonify({'message': 'File processed and data added successfully'}), 200
+
+            return jsonify({'message': 'Invalid file format'}), 400
+
+        except IntegrityError as e:
+            session.rollback()
+            return jsonify({'message': f'Database Integrity Error: {str(e)}'}), 500
+        except Exception as e:
+            return jsonify({'message': f'An error occurred: {str(e)}'}), 500
+
+
+
+
+
+
+
+
+
+
+
+
+-------------------------------------------------
+
+
 def validate_volume_store_entry(entry):
     key_type = entry.get('KeyType')
     volume_type = entry.get('VolumeType')
