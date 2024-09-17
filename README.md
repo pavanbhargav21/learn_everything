@@ -1,4 +1,34 @@
 
+def save_roles_information(ad_groups):
+    with session_scope('DESIGNER') as session:
+        # Fetch all roles that already exist in the database
+        existing_roles = session.query(PulseRolesDetails.ad_group_name).filter(PulseRolesDetails.ad_group_name.in_(ad_groups)).all()
+
+        # Convert the result to a set for faster lookup
+        existing_roles_set = {role[0] for role in existing_roles}
+
+        # Prepare a list for new roles that are not yet in the database
+        new_roles = [
+            PulseRolesDetails(
+                ad_group_name=group,
+                service_name='Unknown',  # or map this to something meaningful
+                created_date=datetime.utcnow(),
+                modified_date=datetime.utcnow(),
+                ad_desc='Description',  # or map this to a meaningful description
+                is_active=True
+            )
+            for group in ad_groups if group not in existing_roles_set
+        ]
+
+        # Add new roles to the session in bulk
+        if new_roles:
+            session.bulk_save_objects(new_roles)
+        session.flush()
+
+
+
+
+
 from flask import Blueprint, request, jsonify, redirect
 from flask_restful import Api, Resource
 from flask_jwt_extended import jwt_required, create_access_token, get_jwt_identity
