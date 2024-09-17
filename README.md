@@ -1,4 +1,223 @@
 
+from flask import Blueprint, request, jsonify, redirect
+from flask_restful import Api, Resource
+from flask_jwt_extended import jwt_required, create_access_token, get_jwt_identity
+from datetime import datetime
+from sqlalchemy.exc import SQLAlchemyError
+from flask_cors import cross_origin
+from app.models.model_designer import UserSession, PulseUserDetails, PulseRolesDetails
+from app.database import session_scope
+from app import azure_authentication
+import os
+import requests
+from urllib.parse import urlencode
+
+FRONTEND_API_URL = os.getenv('FRONTEND_API_URL')
+BACKEND_API_URL = os.getenv('BACKEND_API_URL')
+
+login_bp = Blueprint('login', __name__, url_prefix='/login_with_azure')
+logout_bp = Blueprint('logout', __name__, url_prefix='/logout')
+token_bp = Blueprint('gettoken', __name__, url_prefix='/get_token')
+
+api_login = Api(login_bp)
+api_logout = Api(logout_bp)
+api_token = Api(token_bp)
+
+proxies = {"http": 'http://proxy.azure:3128', "https": 'http://proxy.azure:3128'}
+
+# Function to save new AD group details if not already present
+def save_roles_information(ad_groups):
+    with session_scope('DESIGNER') as session:
+        for group in ad_groups:
+            existing_role = session.query(PulseRolesDetails).filter_by(ad_group_name=group).first()
+            if not existing_role:
+                new_role = PulseRolesDetails(
+                    ad_group_name=group,
+                    service_name='Unknown',  # or map this to something meaningful
+                    created_date=datetime.utcnow(),
+                    modified_date=datetime.utcnow(),
+                    ad_desc='Description',  # or map this to a meaningful description
+                    is_active=True
+                )
+                session.add(new_role)
+        session.flush()
+
+# Function to save user session information
+def create_user_session(jwt_access_token, user_email, user_name, psid):
+    try:
+        with session_scope('DESIGNER') as session:
+            session_record = UserSession(
+                employee_id=psid,
+                email=user_email,
+                name=user_name,
+                login_time=datetime.utcnow(),
+                token=jwt_access_token,
+                is_active=True
+            )
+            session.add(session_record)
+    except SQLAlchemyError:
+        return jsonify({"msg": "Database error"}), 500
+
+# Function to save or update user details upon login
+def save_user_information(user_data):
+    user_psid = user_data.get("user_psid")
+    with session_scope('DESIGNER') as session:
+        user_details = session.query(PulseUserDetails).filter_by(user_id=user_psid).one_or_none()
+        if not user_details:
+            user = PulseUserDetails(
+                user_id=user_data["user_psid"],
+                user_email=user_data["user_email"],
+                user_name=user_data["user_name"],
+                user_lang=user_data["user_language"],
+                user_country=user_data["user_country"],
+                user_timezone=user_data["user_tz"],
+                user_created_date=datetime.utcnow(),
+                user_modified_date=datetime.utcnow(),
+                user_region=user_data["user_region"],
+                user_adgroup_list=user_data["user_adgroups"]
+            )
+            session.add(user)
+        else:
+            user_details.user_email = user_data["user_email"]
+            user_details.user_name = user_data["user_name"]
+            user_details.user_lang = user_data["user_language"]
+            user_details.user_country = user_data["user_country"]
+            user_details.user_timezone = user_data["user_tz"]
+            user_details.user_modified_date = datetime.utcnow()
+            user_details.user_adgroup_list = user_data["user_adgroups"]
+        session.flush()
+
+# Function to make a Microsoft Graph API call
+def get_me(access_token, url):
+    endpoint = f"https://graph.microsoft.com/v1.0{url}"
+    api_result = requests.get(
+        endpoint,
+        headers={
+            'Authorization': f"Bearer {access_token}",
+            'Content-Type': 'application/json'
+        }
+    ).json()
+    return dict(api_result)
+
+# Function to blacklist a token (used during logout)
+def blacklist_token(token):
+    with session_scope('DESIGNER') as session:
+        user_session = session.query(UserSession).filter_by(token=token).first()
+        if user_session:
+            user_session.is_blacklisted = True
+            session.flush()
+
+# Login with Azure
+class LoginWithAzure(Resource):
+    @cross_origin()
+    def get(self):
+        redirect_uri = f'{BACKEND_API_URL}/get_token'
+        ms_login_url = azure_authentication.get_signin_url(redirect_uri)
+        return redirect(ms_login_url)
+
+# Logout the user and blacklist the token
+class Logout(Resource):
+    @cross_origin()
+    @jwt_required()
+    def post(self):
+        token = request.headers.get('Authorization')
+        if token:
+            token = token.split(" ")[1]
+            try:
+                blacklist_token(token)
+                with session_scope('DESIGNER') as session:
+                    user_session = session.query(UserSession).filter_by(token=token).first()
+                    if user_session:
+                        user_session.logout_time = datetime.utcnow()
+                        user_session.is_active = False
+                    session.flush()
+                return jsonify({"msg": "Logout successful"}), 201
+            except Exception:
+                return jsonify({"msg": "Invalid token"}), 401
+        else:
+            return jsonify({"msg": "Token Required"}), 400
+
+# Get token from Azure and process user information
+class GetTokenFromAzure(Resource):
+    @cross_origin()
+    def get(self):
+        auth_code = request.args.get('code')
+        redirect_uri = f'{BACKEND_API_URL}/get_token'
+        token = azure_authentication.get_token_from_code(auth_code, redirect_uri)
+        access_token = token.get('access_token')
+
+        if access_token:
+            get_user = get_me(access_token, '/me')
+            user_email = get_user.get('userPrincipalName')
+            user_id = get_user.get('id')
+
+            get_user_details = get_me(access_token, f'/users/{user_id}?$select=streetAddress,employeeID,department,companyName,mobilePhone,country,preferredLanguage')
+            get_group_data = get_me(access_token, f'/users/{user_id}/memberOf?$top=500')
+            mail_box_settings = get_me(access_token, "/me/mailboxSettings?$select=timeZone")
+            get_manager = get_me(access_token, f'/users/{user_id}/manager?$select=mailNickname,mail')
+
+            user_info = {
+                'u_first_name': get_user.get('givenName', ''),
+                'u_last_name': get_user.get('surname', ''),
+                'u_email': get_user.get('mail', ''),
+                'u_psid': get_user_details.get('employeeId', ''),
+                'u_lm_psid': get_manager.get('mailNickname'),
+                'u_lm_email': get_manager.get('mail'),
+                'u_lm_country': get_user_details.get('country', ''),
+            }
+            user_name = f"{user_info['u_first_name']} {user_info['u_last_name']}"
+            ad_group_data = [x.get("displayName") for x in get_group_data.get("value")]
+            jwt_access_token = create_access_token(identity=user_email, additional_claims={'user_id': user_info['u_psid'], 'user_name': user_name})
+
+            # Save user session and user details
+            create_user_session(jwt_access_token, user_email, user_name, user_info['u_psid'])
+            save_user_information({
+                "user_psid": user_info['u_psid'],
+                "user_name": user_name,
+                "user_email": user_email,
+                "user_adgroups": "|".join(ad_group_data),
+                "is_active": True,
+                "user_language": get_user.get("preferredLanguage"),
+                "user_country": get_user_details.get("country", ""),
+                "user_tz": mail_box_settings.get("timeZone", ""),
+                "user_region": get_user_details.get('streetAddress', '')
+            })
+
+            # Save roles in PulseRolesDetails if not already present
+            save_roles_information(ad_group_data)
+
+            # Sending to Frontend
+            user = {
+                'user_name': get_user.get('displayName', ''),
+                'user_email': get_user.get('userPrincipalName', ''),
+                'access_token': jwt_access_token,
+                'user_phone_number': get_user_details.get('mobilePhone', ''),
+                'user_office_location': get_user_details.get('streetAddress', ''),
+                'user_language': get_user.get('preferredLanguage', ''),
+                'user_job_title': get_user.get('jobTitle', ''),
+                'user_employee_id': get_user_details.get('employeeId', ''),
+                'user_department': get_user_details.get('department', ''),
+                'user_company_name': get_user_details.get('companyName', ''),
+                'user_ad_groups': ad_group_data
+            }
+
+            return redirect(f'{FRONTEND_API_URL}/oauth/login/redirect/?{urlencode(user)}')
+
+
+# Registering the resources to the Blueprint
+api_login.add_resource(LoginWithAzure, '/')
+api_logout.add_resource(Logout, '/')
+api_token.add_resource(GetTokenFromAzure, '/')
+
+
+
+
+
+
+-----------------------
+
+
+
 from flask import Blueprint, request, jsonify
 from flask_restful import Api, Resource
 from flask_cors import cross_origin
