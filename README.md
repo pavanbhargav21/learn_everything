@@ -1,3 +1,32 @@
+from flask import jsonify
+from app.models.model_designer import PulseUserDetails
+from app.database import session_scope
+
+def get_users_in_ad_group(ad_group_name):
+    users_list = []
+
+    with session_scope('DESIGNER') as session:
+        # Query all users and filter in Python
+        users = session.query(PulseUserDetails).all()
+
+        for user in users:
+            ad_groups = user.user_adgroup_list.split('|') if user.user_adgroup_list else []
+            if ad_group_name in ad_groups:
+                user_data = {
+                    'name': user.user_name,
+                    'email': user.user_email,
+                    'psid': user.user_id
+                }
+                users_list.append(user_data)
+
+    # Return the JSONified response
+    return jsonify(users_list)
+
+
+
+
+
+
 
 def save_roles_information(ad_groups):
     with session_scope('DESIGNER') as session:
