@@ -1,3 +1,76 @@
+
+class GetTokenFromAzure(Resource):
+    @cross_origin()
+    def get(self):
+        auth_code = request.args.get('code')
+        print("auth_code", auth_code)
+        
+        # Ensure auth_code is only fetched once
+        if not auth_code:
+            return jsonify({"msg": "Authorization code not found"}), 400
+        
+        # Token request from Azure
+        redirect_uri = f'{BACKEND_API_URL}/get_token'
+        token = azure_authentication.get_token_from_code(auth_code, redirect_uri)
+        access_token = token.get('access_token')
+        print("ACC_Token", access_token)
+        
+        if not access_token:
+            return jsonify({"msg": "Failed to retrieve access token"}), 400
+        
+        # Proceed with user data retrieval and session creation only after successful token generation
+        try:
+            get_user = get_me(access_token, '/me')
+            user_email = get_user.get('userPrincipalName')
+            user_id = get_user.get('id')
+            
+            # Additional data retrieval
+            get_user_details = get_me(access_token, f'/users/{user_id}?$select=...')
+            get_group_data = get_me(access_token, f'/users/{user_id}/memberOf?$top=500')
+            mail_box_settings = get_me(access_token, "/me/mailboxSettings?$select=timeZone")
+            get_manager = get_me(access_token, f'/users/{user_id}/manager?$select=mailNickname,mail')
+
+            # Prepare user info for session creation and saving
+            user_info = {
+                'u_first_name': get_user.get('givenName', ''),
+                'u_last_name': get_user.get('surname', ''),
+                'u_email': get_user.get('mail', ''),
+                'u_psid': get_user_details.get('employeeId', ''),
+                'u_lm_psid': get_manager.get('mailNickname'),
+                'u_lm_email': get_manager.get('mail'),
+                'u_lm_country': get_user_details.get('country', ''),
+            }
+            user_name = f"{user_info['u_first_name']} {user_info['u_last_name']}"
+            ad_group_data = [x.get("displayName") for x in get_group_data.get("value")]
+            jwt_access_token = create_access_token(identity=user_email, additional_claims={'user_id': user_info['u_psid'], 'user_name': user_name})
+
+            # Save session and user data
+            create_user_session(jwt_access_token, user_email, user_name, user_info['u_psid'])
+            save_user_information({...})
+            save_roles_information(ad_group_data)
+
+            # Redirect to Frontend
+            user = {
+                'user_name': get_user.get('displayName', ''),
+                'user_email': get_user.get('userPrincipalName', ''),
+                'access_token': jwt_access_token,
+                'user_phone_number': get_user_details.get('mobilePhone', ''),
+                ...
+            }
+            print("Redirecting to frontend with user info")
+            return redirect(f'{FRONTEND_API_URL}/oauth/login/redirect/?{urlencode(user)}')
+
+        except Exception as e:
+            print(f"Error during token processing: {str(e)}")
+            return jsonify({"msg": "Error processing user information"}), 500
+
+
+
+
+
+
+
+
 from flask import jsonify
 from app.models.model_designer import PulseUserDetails
 from app.database import session_scope
