@@ -1,3 +1,163 @@
+"""
+This file handles API requests related to Workflow Names.
+"""
+
+from datetime import datetime
+from flask import Blueprint, jsonify, request
+from flask_cors import cross_origin
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from flask_restful import Api, Resource
+from app.database import session_scope
+from app.models.model_designer import Workflow
+
+bp = Blueprint("workflows", __name__, url_prefix="/api/workflows")
+api = Api(bp)
+
+
+class WorkflowResource(Resource):
+    """
+    Resource to handle GET and POST requests for workflows.
+    """
+
+    @jwt_required()
+    def get(self):
+        """
+        Get all workflows from the database.
+        
+        Returns:
+            JSON response with a list of workflows.
+        """
+        user_email = get_jwt_identity()
+        claims = get_jwt()
+        user_id = claims.get("user_id")
+        user_name = claims.get("user_name").title()
+
+        with session_scope("DESIGNER") as session:
+            workflows = session.query(Workflow).all()
+            data = [
+                {
+                    "id": w.id,
+                    "workflow_name": w.workflow_name,
+                    "system_name": w.system_name,
+                }
+                for w in workflows
+            ]
+        return jsonify(data)
+
+    @cross_origin()
+    @jwt_required()
+    def post(self):
+        """
+        Create a new workflow entry in the database.
+
+        Returns:
+            JSON response with the newly created workflow details or error message.
+        """
+        with session_scope("DESIGNER") as session:
+            data = request.get_json()
+            createdby = request.headers.get("Createdby")
+            if not createdby:
+                return {"message": "Missing CreatedBy header"}, 400
+
+            workflow_name = data.get("workflow_name")
+            system_name = data.get("system")
+            existing_workflow = (
+                session.query(Workflow)
+                .filter_by(workflow_name=workflow_name)
+                .first()
+            )
+            if existing_workflow:
+                return (
+                    jsonify(
+                        {
+                            "message": "Workflow already exists with the same name",
+                            "id": existing_workflow.id,
+                        }
+                    ),
+                    400,
+                )
+
+            new_workflow = Workflow(
+                workflow_name=workflow_name,
+                system_name=system_name,
+                created_by=createdby,
+                created_date=datetime.utcnow(),
+            )
+            session.add(new_workflow)
+            session.flush()
+
+            response = {
+                "id": new_workflow.id,
+                "workflow_name": new_workflow.workflow_name,
+                "system_name": new_workflow.system_name,
+            }
+        return jsonify(response), 201
+
+
+class WorkflowDetailResource(Resource):
+    """
+    Resource to handle PUT and DELETE requests for a specific workflow entry.
+    """
+
+    @cross_origin()
+    @jwt_required()
+    def put(self, id):
+        """
+        Update a workflow entry in the database.
+
+        Args:
+            id (int): ID of the workflow entry to update.
+
+        Returns:
+            JSON response indicating success or failure.
+        """
+        with session_scope("DESIGNER") as session:
+            data = request.get_json()
+            modified_by = request.headers.get("Createdby")
+            if not modified_by:
+                return {"message": "Missing ModifiedBy header"}, 400
+
+            workflow = session.query(Workflow).get(id)
+            if not workflow:
+                return {"message": "Workflow entry not found"}, 404
+
+            workflow.workflow_name = data.get("workflow_name")
+            workflow.system_name = data.get("system_name")
+            workflow.modified_by = modified_by
+            workflow.modified_date = datetime.utcnow()
+
+        return {"message": "Workflow entry updated successfully"}, 200
+
+    @cross_origin()
+    @jwt_required()
+    def delete(self, id):
+        """
+        Mark a workflow entry as inactive (soft delete).
+
+        Args:
+            id (int): ID of the workflow entry to delete.
+
+        Returns:
+            JSON response indicating success or failure.
+        """
+        with session_scope("DESIGNER") as session:
+            workflow = session.query(Workflow).get(id)
+            if not workflow:
+                return {"message": "Workflow entry not found"}, 404
+            workflow.is_active = False
+        return {"message": "Workflow entry deleted successfully"}, 200
+
+
+# Add routes to the API
+api.add_resource(WorkflowResource, "/")
+api.add_resource(WorkflowDetailResource, "/<int:id>")
+
+
+----------------
+
+
+
+
 
 class GetTokenFromAzure(Resource):
     @cross_origin()
