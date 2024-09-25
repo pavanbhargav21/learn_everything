@@ -1,3 +1,651 @@
+
+from flask import Flask, Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+from flask_cors import cross_origin
+from sqlalchemy.orm import aliased
+import pandas as pd
+from app.models.model_designer import (
+    Workflow, Whitelist, WhitelistStoreConfigRequests,
+    WhitelistStoreRequests, WhitelistStoreRequestsApprovals
+)
+from app.database import session_scope
+from sqlalchemy import func
+import validators
+import logging
+
+# Define the blueprint for the whitelists maker routes
+bp = Blueprint('makerwhitelists', __name__, url_prefix='/api/whitelists-maker')
+api = Api(bp)
+
+class WhitelistMakerResource(Resource):
+    """
+    Resource class for managing whitelist creation and fetching requests.
+    This class handles GET, POST, PUT, and DELETE requests for whitelist-related operations.
+    """
+
+    @jwt_required()
+    def get(self):
+        """
+        GET request to fetch the whitelist store requests created by the logged-in user.
+
+        Returns:
+            JSON: List of whitelist store requests for the current user.
+        """
+        try:
+            # Retrieve JWT claims and user details
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            if not user_id:
+                return {'message': "Missing user PSID"}, 400
+
+            # Fetch whitelist store requests created by the user
+            with session_scope('DESIGNER') as session:
+                app_requests = session.query(WhitelistStoreRequests).filter_by(
+                    created_by=user_id,
+                    is_active=True
+                ).all()
+
+                # Prepare data to be returned
+                data = [{
+                    'requestId': w.request_id,
+                    'count': w.count,
+                    'approver1': w.approver_1,
+                    'approver1Email': w.approver_1_email,
+                    'approver1Name': w.approver_1_name,
+                    'requestCreatedDate': w.req_created_date,
+                    'requestSentDate': w.req_sent_date,
+                    'approverActionDate': w.approver_action_date,
+                    'modifiedDate': w.modified_date,
+                    'status': w.status,
+                    'comments': w.comments
+                } for w in app_requests]
+
+            return jsonify(data)
+
+        except Exception as e:
+            logging.error(f"Error occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @cross_origin()
+    @jwt_required()
+    def post(self):
+        """
+        POST request to create a new whitelist store request.
+
+        Expects a JSON payload with `workflow_name`, `url`, `titles`, `environment`, and other fields.
+        Validates the input data and checks for conflicts before creating the request.
+        """
+        try:
+            # Retrieve JWT claims and user details
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+            data = request.get_json()
+
+            # Validate URL
+            if data.get('url') and not validators.url(data['url']):
+                return jsonify({'message': 'Invalid URL'}), 400
+
+            # Ensure at least two titles
+            titles = [title.strip() for title in data['titles'].split(',')]
+            if len(titles) < 2:
+                return jsonify({'message': 'At least two page titles are required'}), 400
+
+            with session_scope('DESIGNER') as session:
+                # Fetch or create the workflow ID
+                workflow_name = data.get('workflow_name')
+                workflow = session.query(Workflow).filter_by(workflow_name=workflow_name).first()
+
+                if not workflow:
+                    new_workflow = Workflow(
+                        workflow_name=workflow_name,
+                        system_name=workflow_name,
+                        created_date=datetime.utcnow()
+                    )
+                    session.add(new_workflow)
+                    session.flush()  # Commit to get the new workflow ID
+                    workflow_id = new_workflow.id
+                else:
+                    workflow_id = workflow.id
+
+                # Define overlap check functions
+                def check_whitelist_entry(session, workflow_id):
+                    return session.query(Whitelist).filter_by(
+                        workflow_url=data['url'],
+                        environment=data['environment'],
+                        workflow_id=workflow_id,
+                        window_titles=data['titles'],
+                        is_active=True
+                    ).first()
+
+                def check_config_requests_entry(session, workflow_id):
+                    return session.query(WhitelistStoreConfigRequests).filter_by(
+                        workflow_url=data['url'],
+                        environment=data['environment'],
+                        workflow_id=workflow_id,
+                        window_titles=data['titles'],
+                        is_active=True
+                    ).first()
+
+                def check_whitelist_overlap(session, titles):
+                    existing_whitelists = session.query(Whitelist).filter(Whitelist.is_active == True).all()
+                    existing_titles = set()
+
+                    for wl in existing_whitelists:
+                        ex_titles = set(title.strip() for title in wl.window_titles.split(','))
+                        existing_titles.update(ex_titles)
+
+                    overlap = existing_titles & set(titles)
+                    return overlap
+
+                def check_config_requests_overlap(session, titles):
+                    existing_requests = session.query(WhitelistStoreConfigRequests).filter(
+                        WhitelistStoreConfigRequests.is_active == True).all()
+                    existing_titles = set()
+
+                    for wl in existing_requests:
+                        ex_titles = set(title.strip() for title in wl.window_titles.split(','))
+                        existing_titles.update(ex_titles)
+
+                    overlap = existing_titles & set(titles)
+                    return overlap
+
+                # Execute the overlap checks concurrently
+                with ThreadPoolExecutor() as executor:
+                    future_whitelist = executor.submit(check_whitelist_entry, session, workflow_id)
+                    future_config_requests = executor.submit(check_config_requests_entry, session, workflow_id)
+                    future_whitelist_overlap = executor.submit(check_whitelist_overlap, session, titles)
+                    future_config_requests_overlap = executor.submit(check_config_requests_overlap, session, titles)
+
+                    # Get results
+                    whitelist_result = future_whitelist.result()
+                    config_requests_result = future_config_requests.result()
+                    whitelist_overlap = future_whitelist_overlap.result()
+                    config_requests_overlap = future_config_requests_overlap.result()
+
+                    # Check for conflicts
+                    if whitelist_result:
+                        return jsonify({'message': 'Whitelist entry already exists in App Store'}), 400
+
+                    if config_requests_result:
+                        return jsonify({
+                            'message': f'Entry already exists with Request ID: {config_requests_result.request_id}'
+                        }), 400
+
+                    if whitelist_overlap or config_requests_overlap:
+                        overlap_titles = whitelist_overlap | config_requests_overlap
+                        return jsonify({
+                            'message': f'One or more window titles already exist with another workflow: {", ".join(overlap_titles)}'
+                        }), 400
+
+                    # No conflicts, create the request
+                    new_request = WhitelistStoreRequests(
+                        count=1,
+                        req_created_date=datetime.utcnow(),
+                        modified_date=datetime.utcnow(),
+                        created_by=user_id,
+                        creator_name=user_name,
+                        creator_email=user_email,
+                        is_active=True,
+                        status="open",
+                    )
+                    session.add(new_request)
+                    session.flush()  # Commit to get the new Request ID
+
+                    new_whitelist_config = WhitelistStoreConfigRequests(
+                        request_id=new_request.request_id,
+                        workflow_id=workflow_id,
+                        serial_number=1,
+                        workflow_name=workflow_name,
+                        workflow_url=data['url'],
+                        environment=data['environment'],
+                        is_active=True,
+                        status_ar="open",
+                        modified_date=datetime.utcnow(),
+                        window_titles=data['titles'],
+                        is_full_image_capture=data.get('screenCapture', 'no') == 'yes',
+                    )
+                    session.add(new_whitelist_config)
+
+                    return jsonify({'message': 'Whitelist request created successfully', 'request_id': new_request.request_id}), 201
+
+        except Exception as e:
+            logging.error(f"Error occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @cross_origin()
+    @jwt_required()
+    def put(self):
+        """
+        PUT request to update the status of existing whitelist requests to 'pending' and assign approvers.
+
+        Expects a JSON payload with `requestIds` and `approverInfo`.
+
+        Returns:
+            JSON: Message indicating the update status.
+        """
+        try:
+            data = request.get_json()
+            request_ids = data.get('requestIds', [])
+            approvers = data.get('approverInfo', [])
+
+            if not request_ids:
+                return jsonify({"error": "No Request IDs provided"}), 400
+            if not approvers:
+                return jsonify({"error": "No approvers provided"}), 400
+
+            with session_scope('DESIGNER') as session:
+                # Update request status to 'pending'
+                session.query(WhitelistStoreRequests).filter(
+                    WhitelistStoreRequests.request_id.in_(request_ids)
+                ).update(
+                    {WhitelistStoreRequests.status: 'pending', 
+                     WhitelistStoreRequests.req_sent_date: datetime.utcnow()},
+                    synchronize_session=False
+                )
+
+                # Update config requests status to 'pending'
+                session.query(WhitelistStoreConfigRequests).filter(
+                    WhitelistStoreConfigRequests.request_id.in_(request_ids),
+                    WhitelistStoreConfigRequests.is_moved_to_main == False
+                ).update(
+                    {WhitelistStoreConfigRequests.status_ar: 'pending'},
+                    synchronize_session=False
+                )
+
+                # Add new approvers
+                approver_entries = []
+                for request_id in request_ids:
+                    # Deactivate
+
+
+
+@jwt_required()
+    def delete(self):
+        """
+        Delete a whitelist request for the current user.
+        The request ID should be provided in the request data.
+
+        Returns:
+            JSON message indicating success or failure.
+        """
+        try:
+            user_id = get_jwt().get("user_id")
+            if not user_id:
+                return {'message': "Missing user PSID"}, 400
+
+            data = request.get_json()
+            request_id = data.get('request_id')
+
+            if not request_id:
+                return jsonify({'message': 'Request ID is required'}), 400
+
+            with session_scope('DESIGNER') as session:
+                # Fetch the request for the given request ID and user
+                whitelist_request = session.query(WhitelistStoreRequests).filter_by(
+                    request_id=request_id,
+                    created_by=user_id,
+                    is_active=True
+                ).first()
+
+                if not whitelist_request:
+                    return jsonify({'message': 'No active whitelist request found for the given request ID'}), 404
+
+                # Set the request to inactive (soft delete)
+                whitelist_request.is_active = False
+                whitelist_request.modified_date = datetime.utcnow()
+
+                # Also mark related WhitelistStoreConfigRequests entries as inactive
+                session.query(WhitelistStoreConfigRequests).filter_by(
+                    request_id=request_id,
+                    is_active=True
+                ).update({'is_active': False, 'modified_date': datetime.utcnow()})
+
+                return jsonify({'message': 'Whitelist request deleted successfully'}), 200
+
+        except SQLAlchemyError as e:
+            logging.error(f"SQLAlchemy Error: {str(e)}")
+            return jsonify({'status': 'error', 'message': 'Database error occurred'}), 500
+
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+
+
+
+
+
+
+"""
+WhitelistMaker API Resource Module
+
+This module contains Flask resources to manage whitelist entries, their statuses, 
+and actions related to whitelisting within the Workflow Designer system.
+
+Author: [Your Name]
+Date: [Current Date]
+"""
+
+import logging
+from datetime import datetime
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from flask_cors import cross_origin
+from sqlalchemy.orm import aliased
+from sqlalchemy import func
+from app.models.model_designer import (
+    Workflow, Whitelist, WhitelistStoreConfigRequests,
+    WhitelistStoreRequests, WhitelistStoreRequestsApprovals
+)
+from app.database import session_scope
+
+
+# Blueprint and API initialization
+bp = Blueprint('makerwhitelists', __name__, url_prefix='/api/whitelists-maker')
+api = Api(bp)
+
+
+class WhitelistMakerResource(Resource):
+    """
+    Resource to handle deletion of whitelist entries.
+
+    This resource allows deletion of multiple whitelist requests based on the request ID list.
+    """
+
+    @cross_origin()
+    @jwt_required()
+    def delete(self):
+        """
+        Delete whitelist entries based on request IDs.
+
+        This endpoint receives a list of request IDs, marks them as inactive, 
+        and performs a soft delete from the database.
+
+        Returns:
+            dict: A JSON response indicating the result of the deletion operation.
+        """
+        data = request.get_json()  # Get JSON data from the request body
+        request_ids = data.get('requestIds')  # Extract list of request IDs
+
+        if not request_ids or not isinstance(request_ids, list):
+            return {'message': 'Request IDs must be provided as a list'}, 400
+
+        with session_scope('DESIGNER') as session:
+            # Retrieve all whitelist entries with the provided request IDs
+            whitelist_entries = session.query(WhitelistStoreRequests).filter(
+                WhitelistStoreRequests.request_id.in_(request_ids)
+            ).all()
+
+            if not whitelist_entries:
+                return {'message': 'No matching whitelist entries found'}, 404
+
+            # Mark all retrieved whitelist entries as inactive
+            for entry in whitelist_entries:
+                entry.is_active = False
+
+            # Perform soft delete in the Config table as well
+            sub_whitelist_entries = session.query(WhitelistStoreConfigRequests).filter(
+                WhitelistStoreConfigRequests.request_id.in_(request_ids)
+            ).all()
+
+            if not sub_whitelist_entries:
+                return {'message': 'No matching whitelist entries found in Config'}, 404
+
+            for entry in sub_whitelist_entries:
+                entry.is_active = False
+
+        return {'message': f'Whitelist Request entries {request_ids} deleted successfully'}, 200
+
+
+class WhitelistMakerStatusResource(Resource):
+    """
+    Resource to retrieve the status of whitelist requests.
+
+    This resource allows fetching whitelist requests based on their status,
+    categorized into 'pending', 'approved', 'rejected', or 'partially approved'.
+    """
+
+    @jwt_required()
+    def get(self, status):
+        """
+        Get whitelist requests by status.
+
+        Args:
+            status (str): The status of whitelist requests to fetch ('pending', 'approved', etc.).
+
+        Returns:
+            Response: JSON response containing whitelist request details.
+        """
+        try:
+            # Get the user's identity and claims from the JWT
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            with session_scope('DESIGNER') as session:
+                if status == 'pending':
+                    app_requests = session.query(WhitelistStoreRequests).filter_by(
+                        created_by=user_id, is_active=True, status=status
+                    ).all()
+                
+                    # Prepare the response data
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approvers': [{
+                            'approverId': a.approver_id,
+                            'approverEmail': a.approver_email,
+                            'approverName': a.approver_name
+                        } for a in session.query(WhitelistStoreRequestsApprovals).filter_by(
+                            request_id=w.request_id, is_active=True
+                        ).all()],
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status,
+                        'comments': w.comments
+                    } for w in app_requests]
+
+                elif status in ['approved', 'rejected', 'partially approved']:
+                    app_requests = session.query(WhitelistStoreRequests).filter_by(
+                        status=status, created_by=user_id, is_active=True
+                    ).all()
+
+                    # Prepare the response data
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approvers': [{
+                            'approverId': w.approver_1,
+                            'approverEmail': w.approver_1_email,
+                            'approverName': w.approver_1_name
+                        }],
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status,
+                        'comments': w.comments
+                    } for w in app_requests]
+
+                else:
+                    # Default fallback if none of the statuses match
+                    app_requests = session.query(WhitelistStoreRequests).filter_by(
+                        created_by=user_id, is_active=True, status=status
+                    ).all()
+
+                    # Prepare the response data
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approvers': [{
+                            'approverId': w.approver_1,
+                            'approverEmail': w.approver_1_email,
+                            'approverName': w.approver_1_name
+                        }],
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status,
+                        'comments': w.comments
+                    } for w in app_requests]
+
+            return jsonify(data)
+        except Exception as e:
+            logging.error(f"Error occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+
+
+class WhitelistMakerRequestIdResource(Resource):
+    """
+    Resource for handling operations related to Whitelist requests by ID.
+    """
+
+    @jwt_required()
+    def get(self, request_id):
+        """
+        Retrieves the details of a whitelist entry by its request ID.
+        
+        Args:
+            request_id (int): The ID of the whitelist request to retrieve.
+
+        Returns:
+            JSON: A list of sub-request details, or an error message.
+        """
+        try:
+            # Open a session to interact with the database
+            with session_scope('DESIGNER') as session:
+                app_sub_requests = session.query(WhitelistStoreConfigRequests).filter_by(
+                    request_id=request_id, is_active=True).all()
+
+                # Structure the data to be returned to the frontend
+                data = [{
+                    'requestId': w.request_id,
+                    'id': w.id,
+                    'serialNo': w.serial_number,
+                    'workflowName': w.workflow_name,
+                    'workflowId': w.workflow_id,
+                    'url': w.workflow_url,
+                    'environment': w.environment,
+                    'status': w.status_ar,
+                    'titles': w.window_titles,
+                    'screenCapture': w.is_full_image_capture,
+                } for w in app_sub_requests]
+
+            return jsonify(data)
+
+        except Exception as e:
+            # Log the error and return a generic error message
+            logging.error(f"Error occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+class WhitelistMakerIdResource(Resource):
+    """
+    Resource for updating or deleting a specific whitelist entry by ID.
+    """
+
+    @cross_origin()
+    @jwt_required()
+    def put(self, id):
+        """
+        Updates a specific whitelist entry based on the provided ID.
+        
+        Args:
+            id (int): The ID of the whitelist entry to update.
+
+        Returns:
+            JSON: Success or error message.
+        """
+        try:
+            with session_scope('DESIGNER') as session:
+                data = request.get_json()
+
+                # Fetch the whitelist entry by its ID
+                whitelist = session.query(WhitelistStoreConfigRequests).get(id)
+                if not whitelist:
+                    return {'message': 'Whitelist entry not found'}, 400
+
+                # Update the whitelist entry fields
+                whitelist.workflow_name = data['workflowName']
+                whitelist.workflow_url = data['url']
+                whitelist.environment = data['environment']
+                whitelist.window_titles = data['titles']
+                whitelist.is_full_image_capture = data.get('screenCapture', 'no') == 'yes'
+                whitelist.modified_date = datetime.utcnow()
+
+            return {'message': 'Whitelist entry updated successfully'}, 200
+
+        except Exception as e:
+            logging.error(f"Error occurred during update: {str(e)}")
+            return {'message': 'An error occurred', 'error': str(e)}, 500
+
+    @cross_origin()
+    @jwt_required()
+    def delete(self, id):
+        """
+        Deletes a specific whitelist entry by marking it as inactive.
+
+        Args:
+            id (int): The ID of the whitelist entry to delete.
+
+        Returns:
+            JSON: Success or error message.
+        """
+        try:
+            with session_scope('DESIGNER') as session:
+                # Fetch the whitelist entry by its ID
+                whitelist = session.query(WhitelistStoreConfigRequests).get(id)
+                if not whitelist:
+                    return {'message': 'Whitelist entry not found'}, 404
+
+                # Mark the whitelist entry as inactive
+                whitelist.is_active = False
+
+                # Check for other active records associated with the same request_id
+                other_keynames = session.query(WhitelistStoreConfigRequests).filter_by(
+                    request_id=whitelist.request_id, is_active=True).count()
+
+                # If no other active records exist, update the main request table
+                if other_keynames == 0:
+                    request_entry = session.query(WhitelistStoreRequests).filter_by(
+                        request_id=whitelist.request_id).first()
+                    if request_entry:
+                        request_entry.is_active = False
+                        request_entry.count = other_keynames
+
+            return {'message': 'Whitelist entry deleted successfully'}, 200
+
+        except Exception as e:
+            logging.error(f"Error occurred during deletion: {str(e)}")
+            return {'message': 'An error occurred', 'error': str(e)}, 500
+
+
+# Add the resources to the API
+api.add_resource(WhitelistMakerResource, '/')
+api.add_resource(WhitelistMakerStatusResource, '/status/<string:status>')
+api.add_resource(WhitelistMakerRequestIdResource, '/request-id/<int:request_id>')
+api.add_resource(WhitelistMakerIdResource, '/request-id/id/<int:id>')
+
+------------------------------------------------
+
+
+
 """
 This file handles API requests related to Workflow Names.
 """
