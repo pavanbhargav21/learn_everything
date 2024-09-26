@@ -1,4 +1,599 @@
 
+
+from flask import Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from datetime import datetime
+from flask_cors import cross_origin
+from sqlalchemy import select
+from app.models.model_designer import Whitelist, WhitelistStoreConfigRequests, WhitelistStoreRequests
+from app.database import session_scope
+
+# Define a blueprint for the Whitelist Checker functionality
+bp = Blueprint('checkerwhitelists', __name__, url_prefix='/api/whitelists-checker')
+api = Api(bp)
+
+
+class WhitelistCheckerRequestIdResource(Resource):
+    """
+    Resource for handling whitelist requests based on the request ID.
+    Provides functionality to approve or reject requests.
+    """
+
+    @cross_origin()
+    @jwt_required()
+    def put(self, request_id):
+        """
+        Approves or rejects a whitelist request based on the provided request ID.
+
+        Args:
+            request_id (int): The ID of the whitelist request to be approved or rejected.
+
+        Returns:
+            dict: Response message indicating the result of the operation.
+            int: HTTP status code.
+        """
+        # Begin a session to interact with the database
+        with session_scope('DESIGNER') as session:
+            # Get the current user's email, user ID, and user name from the JWT
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            # Parse the incoming request JSON data
+            data = request.get_json()
+
+            # Fetch the current status, approver, and other details of the request from the database
+            request_status_query = session.execute(
+                select(
+                    WhitelistStoreRequests.status,
+                    WhitelistStoreRequests.approver_1,
+                    WhitelistStoreRequests.created_by,
+                    WhitelistStoreRequests.req_created_date
+                ).where(WhitelistStoreRequests.request_id == request_id)
+            ).fetchone()
+
+            # Check if the request ID is found in the database
+            if request_status_query is None:
+                return jsonify({'message': "No Request ID's found to Approve or Reject"}), 404
+
+            # Extract the current status, approved_by, created_by, and created_date
+            current_status, approved_by, created_by, created_date = request_status_query
+
+            # Check if the request status is still pending, if not, no further action is required
+            if current_status != 'pending':
+                return jsonify({
+                    'message': f'Request is already {current_status} by {approved_by}. No further action required.',
+                }), 200
+
+            # Fetch the whitelist request entry by the request ID and update its status
+            whitelist = session.query(WhitelistStoreRequests).get(request_id)
+            whitelist.status = data['status']  # Update to "approved" or "rejected"
+            whitelist.modified_date = datetime.utcnow()
+            whitelist.approver_action_date = datetime.utcnow()
+            whitelist.approver_1 = user_id
+            whitelist.approver_1_name = user_name
+            whitelist.approver_1_email = user_email
+            whitelist.comments = data.get("comments") or ""
+
+            # If the request is approved, process and move records to the main whitelist table
+            if data['status'] == "approved":
+                # Fetch the records to be moved to the main whitelist table
+                approved_records = session.execute(
+                    select(WhitelistStoreConfigRequests)
+                    .where(WhitelistStoreConfigRequests.request_id == request_id)
+                    .where(WhitelistStoreConfigRequests.is_moved_to_main == False)
+                ).scalars().all()
+
+                # Prepare a list of records for batch insertion into the Whitelist table
+                main_entries = [
+                    Whitelist(
+                        workflow_name=record.workflow_name,
+                        workflow_id=record.workflow_id,
+                        workflow_url=record.workflow_url,
+                        environment=record.environment,
+                        window_titles=record.window_titles,
+                        is_full_image_capture=record.is_full_image_capture,
+                        created_by=created_by,
+                        created_date=created_date,
+                        approved_by=approved_by
+                    )
+                    for record in approved_records
+                ]
+
+                # Perform a bulk insert of the approved records
+                session.bulk_save_objects(main_entries)
+
+            # Update the status of each sub-request in the WhitelistStoreConfigRequests table
+            app_sub_requests = session.query(WhitelistStoreConfigRequests).filter_by(
+                request_id=request_id,
+                is_active=True
+            ).all()
+            updated_count = 0
+            for w in app_sub_requests:
+                w.status_ar = data["status"]
+                if data['status'] == "approved":
+                    w.is_moved_to_main = True
+                updated_count += 1
+
+            # Return a success message indicating how many records were approved or rejected
+            return {'message': f"{updated_count} record's have been Approved/Rejected"}, 200
+
+
+# Add resources to the API
+api.add_resource(WhitelistCheckerRequestIdResource, '/request-id/<int:request_id>')
+
+
+
+
+
+
+."""
+Module: whitelistschecker.py
+Provides API endpoints to check whitelist requests and their status, 
+including approval and rejection functionalities.
+"""
+
+from flask import Flask, Blueprint, request, jsonify
+from flask_restful import Api, Resource
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from datetime import datetime
+from flask_cors import cross_origin
+from sqlalchemy import select
+import logging
+
+from app.models.model_designer import (
+    Whitelist, WhitelistStoreConfigRequests, WhitelistStoreRequests, WhitelistStoreRequestsApprovals
+)
+from app.database import session_scope
+
+# Create a Blueprint for the whitelist checker
+bp = Blueprint('checkerwhitelists', __name__, url_prefix='/api/whitelists-checker')
+api = Api(bp)
+
+class WhitelistCheckerStatusResource(Resource):
+    """
+    API Resource for fetching whitelist request status.
+    
+    Attributes:
+        None
+    """
+
+    @jwt_required()
+    def get(self, status):
+        """
+        Fetches whitelist requests based on their status (pending, approved, rejected, etc.).
+
+        Args:
+            status (str): The status of the requests (e.g., pending, approved, rejected).
+
+        Returns:
+            A JSON response with the list of requests and their details or an error message.
+        """
+        try:
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            with session_scope('DESIGNER') as session:
+                if status == 'pending':
+                    # Fetch pending requests
+                    app_requests = session.query(
+                        WhitelistStoreRequests, WhitelistStoreRequestsApprovals
+                    ).join(
+                        WhitelistStoreRequestsApprovals,
+                        WhitelistStoreRequests.request_id == WhitelistStoreRequestsApprovals.request_id
+                    ).filter(
+                        WhitelistStoreRequestsApprovals.approver_id == user_id,
+                        WhitelistStoreRequestsApprovals.is_active == True,
+                        WhitelistStoreRequests.status == 'pending'
+                    ).all()
+
+                    data = [{
+                        'requestId': wsr.request_id,
+                        'count': wsr.count,
+                        'approvers': [{
+                            'approverId': a.approver_id,
+                            'approverEmail': a.approver_email,
+                            'approverName': a.approver_name
+                        } for a in session.query(WhitelistStoreRequestsApprovals).filter_by(
+                            request_id=wsr.request_id,
+                            is_active=True
+                        ).all()],
+                        'creatorName': wsr.creator_name,
+                        'creatorEmail': wsr.creator_email,
+                        'creatorId': wsr.created_by,
+                        'requestCreatedDate': wsr.req_created_date,
+                        'requestSentDate': wsr.req_sent_date,
+                        'approverActionDate': wsr.approver_action_date,
+                        'modifiedDate': wsr.modified_date,
+                        'status': wsr.status,
+                        'comments': wsr.comments
+                    } for wsr, wsa in app_requests]
+
+                elif status in ['approved', 'rejected', 'partially-approved']:
+                    # Fetch approved, rejected, or partially approved requests
+                    app_requests = session.query(WhitelistStoreRequests).filter_by(
+                        status=status,
+                        approver_1=user_id,
+                        is_active=True,
+                    ).all()
+
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approvers': [{
+                            'approverId': w.approver_1,
+                            'approverEmail': w.approver_1_email,
+                            'approverName': w.approver_1_name
+                        }],
+                        'creatorName': w.creator_name,
+                        'creatorEmail': w.creator_email,
+                        'creatorId': w.created_by,
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status,
+                        'comments': w.comments
+                    } for w in app_requests]
+
+                else:
+                    # Fetch requests based on the provided status
+                    app_requests = session.query(WhitelistStoreRequests).filter_by(
+                        approver_1=user_id,
+                        is_active=True,
+                        status=status
+                    ).all()
+
+                    data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approvers': [{
+                            'approverId': w.approver_1,
+                            'approverEmail': w.approver_1_email,
+                            'approverName': w.approver_1_name
+                        }],
+                        'creatorName': w.creator_name,
+                        'creatorEmail': w.creator_email,
+                        'creatorId': w.created_by,
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status,
+                        'comments': w.comments
+                    } for w in app_requests]
+
+            return jsonify(data)
+        except Exception as e:
+            logging.error(f"Error occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+class WhitelistCheckerRequestIdResource(Resource):
+    """
+    API Resource for fetching and modifying whitelist requests by request ID.
+    
+    Attributes:
+        None
+    """
+
+    @jwt_required()
+    def get(self, request_id):
+        """
+        Fetches details of a whitelist request by its request ID.
+
+        Args:
+            request_id (int): The unique ID of the whitelist request.
+
+        Returns:
+            A JSON response with the details of the whitelist request or an error message.
+        """
+        try:
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            with session_scope('DESIGNER') as session:
+                app_sub_requests = session.query(WhitelistStoreConfigRequests).filter_by(
+                    request_id=request_id,
+                    is_active=True
+                ).all()
+
+                data = [{
+                    'requestId': w.request_id,
+                    'id': w.id,
+                    'serialNo': w.serial_number,
+                    'workflowName': w.workflow_name,
+                    'workflowId': w.workflow_id,
+                    'url': w.workflow_url,
+                    'environment': w.environment,
+                    'status': w.status_ar,
+                    'titles': w.window_titles,
+                    'screenCapture': w.is_full_image_capture
+                } for w in app_sub_requests]
+
+            return jsonify(data)
+        except Exception as e:
+            logging.error(f"Error occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @cross_origin()
+    @jwt_required()
+    def put(self, request_id):
+        """
+        Modifies the status of a whitelist request by its request ID (approve/reject).
+
+        Args:
+            request_id (int): The unique ID of the whitelist request.
+
+        Returns:
+            A success message with the count of approved/rejected records.
+        """
+        try:
+            with session_scope('DESIGNER') as session:
+                user_email = get_jwt_identity()
+                claims = get_jwt()
+                user_id = claims.get("user_id")
+                user_name = claims.get("user_name").title()
+
+                data = request.get_json()
+
+                request_status_query = session.execute(
+                    select(
+                        WhitelistStoreRequests.status,
+                        WhitelistStoreRequests.approver_1,
+                        WhitelistStoreRequests.created_by,
+                        WhitelistStoreRequests.req_created_date
+                    ).where(WhitelistStoreRequests.request_id == request_id)
+                ).fetchone()
+
+                if request_status_query is None:
+                    return jsonify({'message': "No request ID's found to approve or reject"}), 404
+
+                current_status, approved_by, created_by, created_date = request_status_query
+
+                # Check if the status is still "pending"
+                if current_status != 'pending':
+                    return jsonify({
+                        'message': f'Request is already {current_status} by {approved_by}. No further action required.',
+                    }), 200
+
+                # Update request status
+                whitelist = session.query(WhitelistStoreRequests).get(request_id)
+                whitelist.status = data['status']
+                whitelist.modified_date = datetime.utcnow()
+                whitelist.approver_action_date = datetime.utcnow()
+                whitelist.approver_1 = user_id
+                whitelist.approver_1_name = user_name
+                whitelist.approver_1_email = user_email
+                whitelist.comments = data.get("comments") or ""
+
+                if data['status'] == "approved":
+                    approved_records = session.execute(
+                        select(WhitelistStoreConfigRequests)
+                        .where(WhitelistStoreConfigRequests.request_id == request_id)
+                        .where(WhitelistStoreConfigRequests.is_moved_to_main == False)
+                    ).scalars().all()
+
+                    # Prepare batch insert for main entries
+                    main_entries = [
+                        Whitelist(
+                            workflow_name=record.workflow_name,
+                            workflow_id=record.workflow_id,
+                            workflow_url=record.workflow_url,
+                            environment=record.environment,
+                            window_titles=record.window_titles,
+                            is_full_image_capture=record.is_full_image_capture,
+                            created_by=created_by,
+                            created_date=created_date,
+                            approved_by=approved_by
+                        ) for record in approved_records
+                    ]
+
+                    # Perform batch insert
+                    session.bulk_save_objects(main_entries)
+
+                app_sub_requests = session.query(WhitelistStoreConfigRequests).filter_by(
+
+
+
+class WhitelistCheckerResource(Resource):
+    """
+    Resource for handling Whitelist Store Requests. This resource provides
+    the capability to retrieve pending requests and update requests by
+    approving/rejecting specific configurations and moving approved entries
+    to the main Whitelist table.
+    """
+
+    @jwt_required()
+    def get(self):
+        """
+        Fetches all pending whitelist requests assigned to the currently 
+        authenticated user for approval.
+
+        Returns:
+            A JSON response containing all pending requests for the user.
+        """
+        try:
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            with session_scope('DESIGNER') as session:
+                app_requests = session.query(WhitelistStoreRequests).filter_by(
+                        approver_1=user_id,
+                        is_active=True
+                        ).all()
+                
+                data = [{
+                        'requestId': w.request_id,
+                        'count': w.count,
+                        'approvers': [{
+                            'approverId': w.approver_1,
+                            'approverEmail': w.approver_1_email,
+                            'approverName': w.approver_1_name
+                        }],
+                        'creatorName': w.creator_name,
+                        'creatorEmail': w.creator_email,
+                        'creatorId': w.created_by,
+                        'requestCreatedDate': w.req_created_date,
+                        'requestSentDate': w.req_sent_date,
+                        'approverActionDate': w.approver_action_date,
+                        'modifiedDate': w.modified_date,
+                        'status': w.status,
+                        'comments': w.comments
+                    } for w in app_requests]
+                
+            return jsonify(data)
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @cross_origin()
+    @jwt_required()  
+    def put(self):
+        """
+        Updates the status of a whitelist request based on the provided
+        request ID and status updates.
+
+        The status can be 'approved', 'rejected', or 'partially-approved'.
+        Approved records are moved to the main Whitelist table.
+
+        Returns:
+            A JSON response indicating whether the operation was successful.
+        """
+        try:
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+
+            # Parse the Incoming Payload
+            data = request.get_json()
+            request_id = data.get('request_id')
+            updates = data.get('data', [])
+            
+            # Validate the Request Payload
+            if not request_id:
+                return jsonify({'message': 'Missing request_id'}), 400
+
+            if not updates or not isinstance(updates, list):
+                return jsonify({'message': 'Invalid or missing data'}), 400
+
+            with session_scope('DESIGNER') as session:
+                # Query the Current Status of the Request
+                request_status_query = session.execute(
+                    select(
+                    WhitelistStoreRequests.status, 
+                    WhitelistStoreRequests.approver_1,
+                    WhitelistStoreRequests.created_by,
+                    WhitelistStoreRequests.req_created_date)
+                    .where(WhitelistStoreRequests.request_id == request_id)
+                ).fetchone()
+
+                if request_status_query is None:
+                    return jsonify({'message': 'Request ID not found'}), 404
+
+                current_status, approved_by, created_by, created_date = request_status_query
+                
+                # Check if the Status is Still "Pending"
+                if current_status != 'pending':
+                    return jsonify({
+                        'message': f'Request is already {current_status} by {approved_by}. No further action required.',
+                    }), 200
+
+                # Extract the statuses from the payload
+                statuses = [item['status'] for item in updates if 'id' in item and 'status' in item]
+
+                if not statuses:
+                    return jsonify({'message': 'No valid updates found in the payload'}), 400
+
+                # Determine the overall request status based on the payload statuses
+                if all(status == 'approved' for status in statuses):
+                    overall_status = 'approved'
+                elif all(status == 'rejected' for status in statuses):
+                    overall_status = 'rejected'
+                else:
+                    overall_status = 'partially-approved'
+
+                # Update the individual records
+                stmt = (
+                    update(WhitelistStoreConfigRequests)
+                    .where(WhitelistStoreConfigRequests.id.in_([item['id'] for item in updates]))
+                    .values(
+                        status_ar=case(
+                            *[
+                                (WhitelistStoreConfigRequests.id == item['id'], item['status'])
+                                for item in updates
+                            ],
+                            else_=WhitelistStoreConfigRequests.status_ar
+                        ),
+                        modified_date=datetime.utcnow()
+                    )
+                )
+                session.execute(stmt)
+
+                # Move Approved Records to Main Table (Whitelist)
+                approved_records = session.execute(
+                    select(WhitelistStoreConfigRequests)
+                    .where(WhitelistStoreConfigRequests.request_id == request_id)
+                    .where(WhitelistStoreConfigRequests.status_ar == 'approved')
+                    .where(WhitelistStoreConfigRequests.is_moved_to_main == False)
+                ).scalars().all()
+
+                # Prepare batch insert
+                main_entries = [
+                    Whitelist(
+                        workflow_name=record.workflow_name,
+                        workflow_id=record.workflow_id,
+                        workflow_url=record.workflow_url,
+                        environment=record.environment,
+                        window_titles=record.window_titles,
+                        is_full_image_capture=record.is_full_image_capture,
+                        created_by=created_by,
+                        created_date=created_date,
+                        approved_by=approved_by
+                    )
+                    for record in approved_records
+                ]
+                # Perform batch insert
+                session.bulk_save_objects(main_entries)
+
+                # Mark the records as moved
+                session.execute(
+                    update(WhitelistStoreConfigRequests)
+                    .where(WhitelistStoreConfigRequests.id.in_([record.id for record in approved_records]))
+                    .values(is_moved_to_main=True)
+                )
+
+                # Update the request status in WhitelistStoreRequests table
+                request_update_stmt = (
+                    update(WhitelistStoreRequests)
+                    .where(WhitelistStoreRequests.request_id == request_id)
+                    .values(
+                        status=overall_status,
+                        comments=data.get("comments") or "",
+                        approver_action_date=datetime.utcnow(),
+                        approver_1_name=user_name,
+                        approver_1_email=user_email,
+                        approver_1=user_id
+                    )
+                )
+                session.execute(request_update_stmt)
+            return jsonify({'message': 'Records updated and moved to the main table successfully'}), 200
+        except Exception as e:
+            logging.error(f"Error Occurred: {str(e)}")
+            return jsonify({'status': 'error', 'message': 'An internal server error occurred'}), 500
+
+------------------------
+
+
 from flask import Flask, Blueprint, request, jsonify
 from flask_restful import Api, Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
