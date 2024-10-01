@@ -1,4 +1,19 @@
 
+DECLARE @CommaSeparatedValues NVARCHAR(MAX) = 'Value1,Value2,Value3,Value4' -- Replace with your actual values
+DECLARE @SFID INT = 3  -- Set the SFID value
+
+-- Insert each split value as a new row into the delivery_function table
+INSERT INTO delivery_function (df_name, SFID)
+SELECT TRIM(value), @SFID
+FROM STRING_SPLIT(@CommaSeparatedValues, ',');
+
+
+
+
+
+
+
+
 Here’s the revised introduction with the login process integrated, formatted as requested:
 
 
