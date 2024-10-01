@@ -1,4 +1,57 @@
 
+Here’s the revised introduction with the login process integrated, formatted as requested:
+
+
+---
+
+Introduction
+
+The Maker and Checker process implemented in this web application allows users to submit forms across three categories: AppStore, KeyStore, and VolumeStore. Each submission generates a unique Request ID, which tracks the request throughout the approval process. The system enables a Maker to manage and submit requests, while a Checker reviews and either approves or rejects them.
+
+Login Process
+
+To access the system, users need to log in using the link provided below. If you do not currently have access, you must raise a ServiceNow request to gain access to the Project Designer.
+
+Login Link: [Insert login link here]
+
+ServiceNow Request: [Insert ServiceNow link here]
+
+
+Active Directory (AD) Groups
+
+Access control in this application is managed through AD groups. When submitting a ServiceNow request, users should specify the appropriate AD group to gain access as either a Maker or Checker.
+
+Maker AD Group: [Insert Maker AD group here]
+
+Checker AD Group: [Insert Checker AD group here]
+
+
+Once the appropriate AD group access is granted, users will be able to perform the corresponding roles within the system.
+
+Maker and Checker Process Overview
+
+In this workflow:
+
+Makers can edit or delete requests while they are in the Open state.
+
+Requests can be sent for approval, locking them from further changes unless Partially Approved.
+
+Approved requests cannot be modified, ensuring data integrity and control.
+
+
+This document describes the entire Maker and Checker process, focusing on the steps and features available for managing requests.
+
+
+---
+
+Let me know if the formatting and content are as you wanted!
+
+
+
+
+
+
+
 Here’s a revised version of the introduction with a clearer and more direct tone, as per your request:
 
 
