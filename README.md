@@ -1,4 +1,228 @@
 
+Here’s a revised version of the introduction with a clearer and more direct tone, as per your request:
+
+
+---
+
+Introduction
+
+The Maker and Checker process implemented in this web application enables users to submit forms in three categories: AppStore, KeyStore, and VolumeStore. Each submission generates a unique Request ID, which is tracked throughout the approval process. The system allows a Maker to enter and manage requests, while a Checker is responsible for reviewing and approving or rejecting these submissions.
+
+In this workflow:
+
+Makers can edit or delete requests while they are in the Open state.
+
+Requests are sent for approval, at which point they become locked for further changes unless they are Partially Approved.
+
+Approved requests cannot be modified, ensuring data consistency and control.
+
+
+This document describes the Maker and Checker process in detail, focusing on the steps and features available to the users during form submission, approval, and management of requests.
+
+
+---
+
+Let me know if this introduction works or if you'd like any further adjustments!
+
+
+
+
+
+Here's the revised version of the documentation that consolidates the AppStore, KeyStore, and VolumeStore processes into one general flow. It also includes the additional functionality for editing and deleting requests before approval, as well as handling partially approved requests.
+
+
+---
+
+Maker and Checker Process Documentation
+
+Introduction
+
+This document outlines the steps involved in the Maker and Checker process for submitting and approving requests in your web application. The process is designed to handle three types of forms: AppStore, KeyStore, and VolumeStore. Each form submission follows a similar workflow, where a Maker submits a request, and a Checker reviews and approves or rejects the request.
+
+The workflow ensures data integrity and control by allowing edits and deletions before submission for approval, and providing a streamlined approval mechanism.
+
+
+---
+
+1. Maker Workflow
+
+1.1. Submitting a New Request
+
+1. Filling out the Form:
+
+The Maker enters the necessary details in the form. The required fields may vary depending on the type of form (AppStore, KeyStore, or VolumeStore).
+
+For example:
+
+AppStore: Workflow name, URL, window titles.
+
+KeyStore: Business level, daily service, process name, workflow name, key name, layout, remarks.
+
+VolumeStore: Volume-related information.
+
+
+
+
+
+2. Request Creation:
+
+Upon submission of the form, a Request ID is automatically generated to track the submission.
+
+By default, the status of this Request ID will be Open.
+
+
+
+3. Managing Requests in Open State:
+
+As long as a request is in the Open state, the Maker can:
+
+Edit: Modify any details of the request (or records within the request) before sending it for approval.
+
+Delete Records: Remove specific records from the request, particularly in the case of submissions like KeyStore where multiple records (keys) are linked to a single request.
+
+Delete Request: Delete the entire request (and all its associated records) if necessary.
+
+
+
+
+4. Send for Approval:
+
+When ready, the Maker can select one or more Open Request IDs and click on Send for Approval.
+
+The Maker chooses an Approver from the list of available approvers.
+
+Once sent, the status of the request changes to Sent for Approval, and the Maker can no longer edit or delete the request.
+
+
+
+
+1.2. Request Statuses in the Maker Workflow
+
+Open: The request has been created and is in draft mode. The Maker can edit or delete the request or its records.
+
+Sent for Approval: The request has been forwarded to an Approver and is awaiting their review. The Maker can no longer make changes or delete the request.
+
+Approved: The request has been fully approved by the Approver.
+
+Rejected: The request has been rejected by the Approver.
+
+Partially Approved: Only part of the request has been approved. For instance, in the KeyStore, this may mean that only some of the keys have been accepted, while others are rejected.
+
+
+
+---
+
+2. Approval Workflow (Checker's Role)
+
+1. Reviewing Requests:
+
+The Checker (Approver) can view requests that have been Sent for Approval.
+
+The Checker will review the details of the submission and either:
+
+Approve: Fully approve the request.
+
+Reject: Reject the request.
+
+Partially Approve: Approve certain records or parts of the request, while rejecting others.
+
+
+
+
+2. Handling Partially Approved Requests:
+
+If a request is partially approved, the Maker can once again:
+
+Edit the rejected records or update the form to address the issues raised by the Checker.
+
+Resend for Approval after making the necessary changes.
+
+
+
+
+3. Post-Approval:
+
+Once a request has been Approved, the Maker cannot make any further changes or deletions to the request or its records.
+
+The request is locked from further modification.
+
+
+
+
+
+---
+
+3. Summary of Workflow
+
+3.1. Maker's Role
+
+Submit: Fill out and submit the forms in AppStore, KeyStore, or VolumeStore.
+
+Manage Requests (in Open State):
+
+Edit or delete requests or individual records within a request.
+
+Send one or more Request IDs for approval by selecting an approver.
+
+
+Post-Approval:
+
+Once submitted for approval, the request cannot be edited or deleted unless partially approved.
+
+
+
+3.2. Checker's Role
+
+Review: Review requests that have been Sent for Approval.
+
+Decide: Approve, reject, or partially approve the requests.
+
+Feedback: For partially approved requests, the Maker can revise and resubmit.
+
+
+
+---
+
+4. Request Status Overview
+
+1. Open: The Maker can edit or delete the request or records.
+
+
+2. Sent for Approval: The request is pending the Approver’s decision.
+
+
+3. Approved: The request has been fully approved and is locked from further changes.
+
+
+4. Rejected: The request has been rejected.
+
+
+5. Partially Approved: The request has been partially approved, and the Maker can edit the rejected parts and resubmit.
+
+
+
+
+---
+
+Conclusion
+
+This Maker and Checker process ensures that all submissions pass through an approval workflow, allowing for thorough validation before final acceptance. The Maker has full control over requests while they are in the Open state and can manage them freely. Once sent for approval, the Checker reviews the submission and either approves, rejects, or partially approves it. The process is designed to be flexible and transparent, making it easy for both technical and non-technical users to understand and follow.
+
+
+---
+
+Let me know if any further modifications or additional points need to be added!
+
+
+
+
+
+
+
+
+
+
+
 
 from flask import Blueprint, request, jsonify
 from flask_restful import Api, Resource
