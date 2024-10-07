@@ -1,4 +1,270 @@
 
+import pytest
+from unittest import mock
+from sqlalchemy.exc import OperationalError
+from database import get_connection_string, create_engine_session, session_scope
+
+# Mock environment variables for testing
+@pytest.fixture(scope='module', autouse=True)
+def set_env_variables():
+    import os
+    os.environ['MY_DB_TYPE'] = 'mssql'
+    os.environ['MY_DB_SERVER'] = 'localhost'
+    os.environ['MY_DB_DATABASE'] = 'test_db'
+    os.environ['MY_DB_USERNAME'] = 'test_user'
+    os.environ['MY_DB_PASSWORD'] = 'test_password'
+    os.environ['MY_DB_DRIVER'] = 'ODBC Driver 17 for SQL Server'
+
+def test_get_connection_string():
+    connection_string = get_connection_string('MY_DB')
+    assert connection_string is not None
+    assert 'mssql+pyodbc' in connection_string
+
+def test_create_engine_session():
+    with mock.patch('database.create_engine') as mock_create_engine:
+        mock_create_engine.return_value = mock.Mock()
+        engine, session = create_engine_session('MY_DB')
+        assert engine is not None
+        assert session is not None
+
+def test_session_scope_commit():
+    with session_scope('MY_DB') as session:
+        assert session is not None
+
+def test_session_scope_rollback():
+    with mock.patch('database.get_session', side_effect=OperationalError):
+        with pytest.raises(OperationalError):
+            with session_scope('MY_DB') as session:
+                assert session is not None
+
+
+
+
+
+Sure! To write comprehensive unit tests for both login.py and azure_authentication.py using the pytest framework, we can mock external dependencies such as requests, environment variables, and database access. Below is the example code for unit tests for both files:
+
+Unit Tests for login.py
+
+We'll mock the behavior of:
+
+The validate_login function's interaction with the DatabaseManager class.
+
+The DatabaseManager's get_user_by_username function.
+
+Flask's session and redirect handling.
+
+
+# test_login.py
+import pytest
+from unittest.mock import MagicMock, patch
+from login import validate_login, DatabaseManager, login
+
+@pytest.fixture
+def mock_db():
+    """Fixture to mock DatabaseManager."""
+    db_manager = MagicMock(DatabaseManager)
+    return db_manager
+
+@pytest.fixture
+def mock_session():
+    """Fixture to mock Flask session."""
+    with patch('login.session', {}) as session_mock:
+        yield session_mock
+
+@pytest.fixture
+def mock_redirect():
+    """Fixture to mock Flask redirect."""
+    with patch('login.redirect') as redirect_mock:
+        yield redirect_mock
+
+def test_validate_login_success(mock_db, mock_session, mock_redirect):
+    """Test successful login case."""
+    mock_db.get_user_by_username.return_value = {'username': 'testuser', 'password': 'password123'}
+
+    with patch('login.check_password_hash', return_value=True):
+        response = validate_login('testuser', 'password123', mock_db)
+
+        assert response.status_code == 302  # Redirect on success
+        assert 'username' in mock_session
+        assert mock_session['username'] == 'testuser'
+
+def test_validate_login_invalid_username(mock_db, mock_session):
+    """Test login with an invalid username."""
+    mock_db.get_user_by_username.return_value = None  # Simulate user not found
+
+    response = validate_login('invaliduser', 'password123', mock_db)
+
+    assert response.status_code == 401  # Unauthorized for invalid user
+
+def test_validate_login_invalid_password(mock_db, mock_session):
+    """Test login with invalid password."""
+    mock_db.get_user_by_username.return_value = {'username': 'testuser', 'password': 'password123'}
+
+    with patch('login.check_password_hash', return_value=False):  # Invalid password
+        response = validate_login('testuser', 'wrongpassword', mock_db)
+
+        assert response.status_code == 401  # Unauthorized for invalid password
+        assert 'username' not in mock_session
+
+def test_logout(mock_session, mock_redirect):
+    """Test logout functionality."""
+    mock_session['username'] = 'testuser'
+    response = login()
+
+    assert 'username' not in mock_session
+    mock_redirect.assert_called_with('/login')
+
+Unit Tests for azure_authentication.py
+
+We'll mock:
+
+Environment variables like TENET_ID, CLIENT_ID, CLIENT_SECRET.
+
+HTTP requests using requests.post.
+
+Time-based functions to simulate token expiration.
+
+
+# test_azure_authentication.py
+import pytest
+from unittest.mock import patch, MagicMock
+import requests
+import time
+from azure_authentication import (
+    get_signin_url, 
+    get_token_from_code, 
+    get_token_from_refresh_token, 
+    get_access_token
+)
+
+@pytest.fixture
+def mock_env_vars():
+    """Mock environment variables."""
+    with patch.dict('os.environ', {
+        'TENET_ID': 'dummy_tenet_id',
+        'CLIENT_ID': 'dummy_client_id',
+        'CLIENT_SECRET': 'dummy_client_secret'
+    }):
+        yield
+
+@pytest.fixture
+def mock_requests_post():
+    """Mock requests.post for HTTP requests."""
+    with patch('requests.post') as mock_post:
+        yield mock_post
+
+def test_get_signin_url(mock_env_vars):
+    """Test generating sign-in URL."""
+    redirect_uri = 'https://localhost/callback'
+    url = get_signin_url(redirect_uri)
+    assert 'dummy_client_id' in url
+    assert 'https://localhost/callback' in url
+    assert 'select_account' in url
+
+def test_get_token_from_code_success(mock_env_vars, mock_requests_post):
+    """Test getting token from authorization code with success."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {'access_token': 'dummy_access_token'}
+    mock_resp.status_code = 200
+    mock_requests_post.return_value = mock_resp
+
+    token = get_token_from_code('dummy_code', 'https://localhost/callback')
+
+    assert token['access_token'] == 'dummy_access_token'
+
+def test_get_token_from_code_failure(mock_env_vars, mock_requests_post):
+    """Test getting token from authorization code failure."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 400
+    mock_resp.text = 'Bad Request'
+    mock_requests_post.return_value = mock_resp
+
+    token = get_token_from_code('dummy_code', 'https://localhost/callback')
+
+    assert 'Error retrieving token' in token
+
+def test_get_token_from_refresh_token_success(mock_env_vars, mock_requests_post):
+    """Test refreshing token successfully."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {'access_token': 'new_access_token', 'refresh_token': 'new_refresh_token'}
+    mock_resp.status_code = 200
+    mock_requests_post.return_value = mock_resp
+
+    token = get_token_from_refresh_token('dummy_refresh_token', 'https://localhost/callback')
+
+    assert token['access_token'] == 'new_access_token'
+    assert token['refresh_token'] == 'new_refresh_token'
+
+def test_get_access_token_valid(mock_env_vars):
+    """Test getting access token without refreshing (token valid)."""
+    user_object = MagicMock()
+    user_object.access_token = 'valid_access_token'
+    user_object.expiration_time = int(time.time()) + 3600  # Token valid for 1 hour
+
+    token = get_access_token('https://localhost/callback', user_object)
+
+    assert token == 'valid_access_token'
+
+def test_get_access_token_refresh(mock_env_vars, mock_requests_post):
+    """Test getting access token after refreshing (token expired)."""
+    user_object = MagicMock()
+    user_object.access_token = 'expired_access_token'
+    user_object.expiration_time = int(time.time()) - 3600  # Token expired 1 hour ago
+    user_object.refresh_token = 'valid_refresh_token'
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {
+        'access_token': 'new_access_token', 
+        'refresh_token': 'new_refresh_token',
+        'expires_in': 3600
+    }
+    mock_resp.status_code = 200
+    mock_requests_post.return_value = mock_resp
+
+    token = get_access_token('https://localhost/callback', user_object)
+
+    assert token == 'new_access_token'
+    assert user_object.access_token == 'new_access_token'
+    assert user_object.refresh_token == 'new_refresh_token'
+
+Key Points in the Unit Tests:
+
+1. Mocking Environment Variables: The os.getenv() calls are mocked to simulate the presence of environment variables.
+
+
+2. Mocking HTTP Requests: The requests.post function is mocked to simulate successful and failed HTTP requests without making real network calls.
+
+
+3. Simulating Time: In get_access_token, the expiration time is set based on the current time, so we simulate both valid and expired tokens.
+
+
+4. Testing Different Scenarios: Each test case is designed to cover a different execution path, including success, failure, and edge cases like expired tokens.
+
+
+
+You can now run these unit tests using pytest by running the following command:
+
+pytest
+
+This setup will cover most of the functionality in both login.py and azure_authentication.py, with mocked external dependencies.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 from concurrent.futures import ThreadPoolExecutor
 
 with ThreadPoolExecutor() as executor:
