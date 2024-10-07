@@ -1,4 +1,62 @@
 
+from concurrent.futures import ThreadPoolExecutor
+
+with ThreadPoolExecutor() as executor:
+    with session_scope('DESIGNER') as session:
+        business_function_dict, delivery_function_dict, process_function_dict, workflow_dict = self.get_all_ids(session)
+
+        # Define query functions within the context manager
+        def query_whitelist_store():
+            return session.query(WhitelistStoreConfigRequests).filter(WhitelistStoreConfigRequests.is_active == True).all()
+
+        def query_keyname_store():
+            return session.query(KeynameStoreConfigRequests).filter(KeynameStoreConfigRequests.is_active == True).all()
+
+        def query_volume_store():
+            return session.query(VolumeStoreConfigRequests).filter(VolumeStoreConfigRequests.is_active == True).all()
+
+        def query_whitelist():
+            return session.query(Whitelist).filter(Whitelist.is_active == True).all()
+
+        def query_keyname_mapping():
+            return session.query(KeyNameMapping).filter(KeyNameMapping.is_active == True).all()
+
+        def query_volume_matrix():
+            return session.query(VolumeMatrix).filter(VolumeMatrix.is_active == True).all()
+
+        # Submit the functions to the executor without arguments
+        future_results = {
+            'whitelist_store': executor.submit(query_whitelist_store),
+            'keyname_store': executor.submit(query_keyname_store),
+            'volume_store': executor.submit(query_volume_store),
+            'whitelist': executor.submit(query_whitelist),
+            'keyname_mapping': executor.submit(query_keyname_mapping),
+            'volume_matrix': executor.submit(query_volume_matrix),
+        }
+
+        query_results = {key: future.result() for key, future in future_results.items()}
+
+        # Proceed with creating sets from the filtered query results
+        whitelist_store_set = set((wsc.workflow_id, wsc.workflow_url, wsc.environment, wsc.window_titles) for wsc in query_results['whitelist_store'])
+        keyname_store_set = set((knsc.workflow_id, knsc.activity_key_name) for knsc in query_results['keyname_store'])
+        volume_store_set = set((vsc.workflow_id, vsc.pattern, vsc.activity_key_name) for vsc in query_results['volume_store'])
+        whitelist_set = set((w.workflow_id, w.workflow_url, w.environment, w.window_titles) for w in query_results['whitelist'])
+        keyname_mapping_set = set((kn.workflow_id, kn.activity_key_name) for kn in query_results['keyname_mapping'])
+        volume_matrix_set = set((vm.workflow_id, vm.pattern, vm.activity_key_name) for vm in query_results['volume_matrix'])
+
+        # The rest of your processing logic follows...
+
+
+
+
+
+
+
+
+
+
+
+
 DECLARE @CommaSeparatedValues NVARCHAR(MAX) = 'Value1,Value2,Value3,Value4' -- Replace with your actual values
 DECLARE @SFID INT = 3  -- Set the SFID value
 
