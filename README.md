@@ -1,4 +1,350 @@
 
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
+from sqlalchemy.orm import relationship, declarative_base, sessionmaker
+
+# Define the base class
+Base = declarative_base()
+
+# SupplierFunctionMaster table
+class SupplierFunctionMaster(Base):
+    __tablename__ = 'supplier_function_master'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    supplier_function_name = Column(String)
+    supplier_sub_function_name = Column(String)
+
+# DeliveryServiceMaster table
+class DeliveryServiceMaster(Base):
+    __tablename__ = 'delivery_service_master'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    supplier_function_id = Column(Integer, ForeignKey('supplier_function_master.id'))
+    delivery_service_code = Column(String)
+    delivery_service_name = Column(String)
+    
+    # Relationship to SupplierFunctionMaster
+    supplier_function = relationship('SupplierFunctionMaster', back_populates='delivery_services')
+
+# ProcessFunctionMaster table
+class ProcessFunctionMaster(Base):
+    __tablename__ = 'process_function_master'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    process_code = Column(String)
+    process_name = Column(String)
+    delivery_service_id = Column(Integer, ForeignKey('delivery_service_master.id'))
+    
+    # Relationship to DeliveryServiceMaster
+    delivery_service = relationship('DeliveryServiceMaster', back_populates='process_functions')
+
+# ActivityMaster table
+class ActivityMaster(Base):
+    __tablename__ = 'activity_master'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    activity_name = Column(String)
+    process_id = Column(Integer, ForeignKey('process_function_master.id'))
+    
+    # Relationship to ProcessFunctionMaster
+    process = relationship('ProcessFunctionMaster', back_populates='activities')
+
+# Defining relationships
+SupplierFunctionMaster.delivery_services = relationship('DeliveryServiceMaster', back_populates='supplier_function')
+DeliveryServiceMaster.process_functions = relationship('ProcessFunctionMaster', back_populates='delivery_service')
+ProcessFunctionMaster.activities = relationship('ActivityMaster', back_populates='process')
+
+# Engine and Session
+engine = create_engine('mysql+pymysql://username:password@host/dbname')
+Base.metadata.create_all(engine)
+Session = sessionmaker(bind=engine)
+
+
+
+
+
+pip install sqlalchemy pandas openpyxl pymysql
+
+
+
+import pandas as pd
+from sqlalchemy.orm import sessionmaker
+
+# Load the Excel sheet
+df = pd.read_excel('path_to_your_excel_file.xlsx', sheet_name='process_catalog')
+
+# Create a new session
+session = Session()
+
+# Iterate through the rows of the Excel sheet and insert into tables
+for index, row in df.iterrows():
+    # Insert into SupplierFunctionMaster
+    supplier_function = session.query(SupplierFunctionMaster).filter_by(
+        supplier_function_name=row['supplier_function'], 
+        supplier_sub_function_name=row['supplier_sub_function']
+    ).first()
+
+    if not supplier_function:
+        supplier_function = SupplierFunctionMaster(
+            supplier_function_name=row['supplier_function'], 
+            supplier_sub_function_name=row['supplier_sub_function']
+        )
+        session.add(supplier_function)
+        session.commit()
+
+    # Insert into DeliveryServiceMaster
+    delivery_service = session.query(DeliveryServiceMaster).filter_by(
+        delivery_service_code=row['delivery_service_code'], 
+        supplier_function_id=supplier_function.id
+    ).first()
+
+    if not delivery_service:
+        delivery_service = DeliveryServiceMaster(
+            supplier_function_id=supplier_function.id,
+            delivery_service_code=row['delivery_service_code'],
+            delivery_service_name=row['delivery_service']
+        )
+        session.add(delivery_service)
+        session.commit()
+
+    # Insert into ProcessFunctionMaster
+    process_function = session.query(ProcessFunctionMaster).filter_by(
+        process_code=row['process_id'], 
+        delivery_service_id=delivery_service.id
+    ).first()
+
+    if not process_function:
+        process_function = ProcessFunctionMaster(
+            process_code=row['process_id'],
+            process_name=row['process_name'],
+            delivery_service_id=delivery_service.id
+        )
+        session.add(process_function)
+        session.commit()
+
+    # Insert activities into ActivityMaster
+    for col in df.columns:
+        if 'activity' in col.lower():
+            activity_name = row[col]
+            if pd.notna(activity_name):
+                activity = ActivityMaster(
+                    activity_name=activity_name,
+                    process_id=process_function.id
+                )
+                session.add(activity)
+
+# Commit all pending transactions
+session.commit()
+
+# Close the session
+session.close()
+
+-----------------------------------------+++++
+
+
+
+pip install pandas sqlalchemy openpyxl
+
+
+
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, UniqueConstraint
+from sqlalchemy.orm import relationship, sessionmaker, declarative_base
+
+Base = declarative_base()
+
+class SupplierFunctionMaster(Base):
+    __tablename__ = 'supplier_function_master'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    function_name = Column(String, nullable=False)
+    sub_function_name = Column(String, nullable=False)
+    
+    # Ensure uniqueness of function and sub-function combination
+    __table_args__ = (UniqueConstraint('function_name', 'sub_function_name', name='_function_subfunction_uc'),)
+    
+    delivery_services = relationship('DeliveryServiceMaster', back_populates='supplier_function')
+
+class DeliveryServiceMaster(Base):
+    __tablename__ = 'delivery_service_master'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    supplier_function_id = Column(Integer, ForeignKey('supplier_function_master.id'), nullable=False)
+    delivery_service_code = Column(String, nullable=False, unique=True)
+    delivery_service_name = Column(String, nullable=False)
+    
+    supplier_function = relationship('SupplierFunctionMaster', back_populates='delivery_services')
+    processes = relationship('ProcessFunctionMaster', back_populates='delivery_service')
+
+class ProcessFunctionMaster(Base):
+    __tablename__ = 'process_function_master'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    process_code = Column(String, nullable=False, unique=True)
+    process_name = Column(String, nullable=False)
+    delivery_service_id = Column(Integer, ForeignKey('delivery_service_master.id'), nullable=False)
+    
+    delivery_service = relationship('DeliveryServiceMaster', back_populates='processes')
+    activities = relationship('ActivityMaster', back_populates='process')
+
+class ActivityMaster(Base):
+    __tablename__ = 'activity_master'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    activity_name = Column(String, nullable=False)
+    process_id = Column(Integer, ForeignKey('process_function_master.id'), nullable=False)
+    
+    process = relationship('ProcessFunctionMaster', back_populates='activities')
+
+
+
+
+
+import pandas as pd
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, UniqueConstraint
+from sqlalchemy.orm import relationship, sessionmaker, declarative_base
+
+Base = declarative_base()
+
+class SupplierFunctionMaster(Base):
+    __tablename__ = 'supplier_function_master'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    function_name = Column(String, nullable=False)
+    sub_function_name = Column(String, nullable=False)
+    
+    __table_args__ = (UniqueConstraint('function_name', 'sub_function_name', name='_function_subfunction_uc'),)
+    
+    delivery_services = relationship('DeliveryServiceMaster', back_populates='supplier_function')
+
+class DeliveryServiceMaster(Base):
+    __tablename__ = 'delivery_service_master'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    supplier_function_id = Column(Integer, ForeignKey('supplier_function_master.id'), nullable=False)
+    delivery_service_code = Column(String, nullable=False, unique=True)
+    delivery_service_name = Column(String, nullable=False)
+    
+    supplier_function = relationship('SupplierFunctionMaster', back_populates='delivery_services')
+    processes = relationship('ProcessFunctionMaster', back_populates='delivery_service')
+
+class ProcessFunctionMaster(Base):
+    __tablename__ = 'process_function_master'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    process_code = Column(String, nullable=False, unique=True)
+    process_name = Column(String, nullable=False)
+    delivery_service_id = Column(Integer, ForeignKey('delivery_service_master.id'), nullable=False)
+    
+    delivery_service = relationship('DeliveryServiceMaster', back_populates='processes')
+    activities = relationship('ActivityMaster', back_populates='process')
+
+class ActivityMaster(Base):
+    __tablename__ = 'activity_master'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    activity_name = Column(String, nullable=False)
+    process_id = Column(Integer, ForeignKey('process_function_master.id'), nullable=False)
+    
+    process = relationship('ProcessFunctionMaster', back_populates='activities')
+
+def main():
+    # Database setup
+    engine = create_engine('sqlite:///process_catalog.db', echo=False)  # Set echo=True for SQL logs
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    
+    # Read Excel file
+    excel_file = 'process_okay.xlsx'  # Replace with your Excel file path
+    sheet_name = 'process catalog'
+    
+    df = pd.read_excel(excel_file, sheet_name=sheet_name, engine='openpyxl')
+    
+    # Iterate over each row in the DataFrame
+    for index, row in df.iterrows():
+        # Extract data from the row
+        function_name = row['supplier function'].strip()
+        sub_function_name = row['supplier sub function'].strip()
+        delivery_service_code = str(row['delivery service code']).strip()
+        delivery_service_name = row['delivery service'].strip()
+        process_code = str(row['process id']).strip()
+        process_name = row['process name'].strip()
+        
+        # Extract activities (assuming they start from 'activity 1' onwards)
+        activity_columns = [col for col in df.columns if col.lower().startswith('activity')]
+        activities = [str(row[col]).strip() for col in activity_columns if pd.notna(row[col])]
+        
+        # Get or create SupplierFunctionMaster
+        supplier_function = session.query(SupplierFunctionMaster).filter_by(
+            function_name=function_name,
+            sub_function_name=sub_function_name
+        ).first()
+        
+        if not supplier_function:
+            supplier_function = SupplierFunctionMaster(
+                function_name=function_name,
+                sub_function_name=sub_function_name
+            )
+            session.add(supplier_function)
+            session.commit()  # Commit to generate the ID
+        
+        # Get or create DeliveryServiceMaster
+        delivery_service = session.query(DeliveryServiceMaster).filter_by(
+            delivery_service_code=delivery_service_code
+        ).first()
+        
+        if not delivery_service:
+            delivery_service = DeliveryServiceMaster(
+                supplier_function_id=supplier_function.id,
+                delivery_service_code=delivery_service_code,
+                delivery_service_name=delivery_service_name
+            )
+            session.add(delivery_service)
+            session.commit()
+        
+        # Get or create ProcessFunctionMaster
+        process = session.query(ProcessFunctionMaster).filter_by(
+            process_code=process_code
+        ).first()
+        
+        if not process:
+            process = ProcessFunctionMaster(
+                process_code=process_code,
+                process_name=process_name,
+                delivery_service_id=delivery_service.id
+            )
+            session.add(process)
+            session.commit()
+        
+        # Add activities to ActivityMaster
+        for activity_name in activities:
+            # Optionally, check if the activity already exists for the process
+            existing_activity = session.query(ActivityMaster).filter_by(
+                activity_name=activity_name,
+                process_id=process.id
+            ).first()
+            if not existing_activity:
+                activity = ActivityMaster(
+                    activity_name=activity_name,
+                    process_id=process.id
+                )
+                session.add(activity)
+        
+        # Commit after adding activities
+        session.commit()
+    
+    # Close the session
+    session.close()
+    print("Data import completed successfully.")
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+
+
+
+---------------------------------------+++-+++
+
+
 import pytest
 from unittest import mock
 from sqlalchemy.exc import OperationalError
