@@ -1,3 +1,201 @@
+To write unit tests for the VolumeMatrixMakerResource class in your Flask application, we'll use Python's unittest module and Flask's test client. Below is an example of how you can structure your unit tests for each HTTP method (GET, POST, PUT, and DELETE) in the VolumeMatrixMakerResource class.
+
+For testing, you should mock dependencies such as JWT authentication and the database session (session_scope) to isolate your logic from external components.
+
+Prerequisites
+
+Install the required testing libraries:
+
+pip install pytest flask-testing
+
+Example Unit Tests for VolumeMatrixMakerResource
+
+import unittest
+from unittest.mock import patch, MagicMock
+from flask import Flask, jsonify
+from app.routes.volumematrix_maker import bp  # Import your blueprint here
+from flask_jwt_extended import create_access_token
+
+class TestVolumeMatrixMakerResource(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = Flask(__name__)
+        cls.app.register_blueprint(bp)  # Register the blueprint for testing
+        cls.app.config['JWT_SECRET_KEY'] = 'test-secret'
+        cls.client = cls.app.test_client()
+
+    def setUp(self):
+        # Create a test JWT token for authentication
+        self.test_user_id = "12345"
+        self.test_token = create_access_token(identity=self.test_user_id)
+
+    @patch('app.routes.volumematrix_maker.session_scope')
+    def test_get_volume_requests_success(self, mock_session_scope):
+        # Mock the session and the query result
+        mock_session = MagicMock()
+        mock_volume_requests = [
+            MagicMock(
+                request_id=1, count=10, approver_1="approver1", approver_1_email="approver1@example.com",
+                approver_1_name="Approver One", req_created_date="2023-01-01", req_sent_date="2023-01-02",
+                approver_action_date="2023-01-03", modified_date="2023-01-04", status="open", comments="comment"
+            )
+        ]
+        mock_session.query.return_value.filter_by.return_value.all.return_value = mock_volume_requests
+        mock_session_scope.return_value.__enter__.return_value = mock_session
+
+        # Send a GET request with the test JWT token
+        response = self.client.get(
+            '/api/volumematrix-maker',
+            headers={'Authorization': f'Bearer {self.test_token}'}
+        )
+
+        # Assertions
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('requestId', response.json[0])
+        self.assertIn('status', response.json[0])
+
+    @patch('app.routes.volumematrix_maker.session_scope')
+    def test_post_volume_matrix_success(self, mock_session_scope):
+        # Mock session and data
+        mock_session = MagicMock()
+        mock_session_scope.return_value.__enter__.return_value = mock_session
+
+        # Payload to send with POST
+        payload = {
+            'workflowId': 1,
+            'processNameId': 1,
+            'businessLevelId': 1,
+            'deliveryServiceId': 1,
+            'pattern': [
+                {
+                    'name': 'Pattern1',
+                    'fields': [
+                        {'keyName': 'Key1', 'type': 'Button', 'layout': 'Layout1'}
+                    ]
+                }
+            ]
+        }
+
+        # Send POST request
+        response = self.client.post(
+            '/api/volumematrix-maker',
+            json=payload,
+            headers={'Authorization': f'Bearer {self.test_token}'}
+        )
+
+        # Assertions
+        self.assertEqual(response.status_code, 201)
+        self.assertIn('message', response.json)
+        self.assertEqual(response.json['message'], 'Volume Matrix added successfully')
+
+    @patch('app.routes.volumematrix_maker.session_scope')
+    def test_put_volume_requests_success(self, mock_session_scope):
+        # Mock session
+        mock_session = MagicMock()
+        mock_session_scope.return_value.__enter__.return_value = mock_session
+
+        # Payload to send with PUT
+        payload = {
+            'requestIds': [1, 2],
+            'approverInfo': [{'id': 1, 'email': 'approver@example.com', 'name': 'Approver One'}]
+        }
+
+        # Send PUT request
+        response = self.client.put(
+            '/api/volumematrix-maker',
+            json=payload,
+            headers={'Authorization': f'Bearer {self.test_token}'}
+        )
+
+        # Assertions
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('message', response.json)
+        self.assertEqual(response.json['message'], '2 request(s) have been sent for approval')
+
+    @patch('app.routes.volumematrix_maker.session_scope')
+    def test_delete_volume_requests_success(self, mock_session_scope):
+        # Mock session
+        mock_session = MagicMock()
+        mock_session_scope.return_value.__enter__.return_value = mock_session
+
+        # Payload to send with DELETE
+        payload = {'requestIds': [1, 2]}
+
+        # Send DELETE request
+        response = self.client.delete(
+            '/api/volumematrix-maker',
+            json=payload,
+            headers={'Authorization': f'Bearer {self.test_token}'}
+        )
+
+        # Assertions
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('message', response.json)
+        self.assertEqual(response.json['message'], 'Volume Request entries [1, 2] deleted successfully')
+
+
+if __name__ == '__main__':
+    unittest.main()
+
+Explanation of Tests:
+
+1. Setup:
+
+setUpClass: Initializes the Flask application, registers the blueprint, and creates a test client.
+
+setUp: Generates a JWT token for authentication and saves it for reuse in the tests.
+
+
+
+2. Test Cases:
+
+test_get_volume_requests_success:
+
+Mocks the session and database queries, then sends a GET request to /api/volumematrix-maker.
+
+Checks that the response contains the correct fields and has a 200 OK status.
+
+
+test_post_volume_matrix_success:
+
+Mocks the session and sends a POST request with JSON data.
+
+Verifies the response returns a success message with a 201 Created status.
+
+
+test_put_volume_requests_success:
+
+Mocks the session and sends a PUT request to update volume requests.
+
+Verifies that the response contains the correct success message.
+
+
+test_delete_volume_requests_success:
+
+Mocks the session and sends a DELETE request to delete volume requests.
+
+Verifies the correct response and that the entries are marked as deleted.
+
+
+
+
+
+Mocking and Dependency Injection:
+
+JWT Authentication: The JWT token creation (create_access_token) is used to simulate authenticated requests.
+
+Database Sessions: The session_scope context manager is mocked to avoid using the real database during testing. The session and query methods are replaced with MagicMock to simulate database responses.
+
+
+You can add more tests for edge cases, such as invalid payloads or handling exceptions.
+
+
+
+
+
+
+
 from flask import Flask, Blueprint, request, jsonify
 from flask_restful import Api, Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
