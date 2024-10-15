@@ -1,3 +1,985 @@
+user session 
+
+login.py
+
+
+Given the code provided for login.py, I understand that you're using SQLAlchemy, Flask, and a custom context manager session_scope for managing your database session. Here's how to modify the pytest unit test to use your actual session_scope context manager and database setup from login.py.
+
+Updated Pytest Unit Test
+
+import pytest
+from flask import jsonify
+from flask_jwt_extended import create_access_token
+from app.models.model_designer import UserSession, PulseUserDetails, PulseRolesDetails
+from app.database import session_scope
+from login import create_user_session, save_user_information, save_roles_information
+from unittest.mock import patch
+from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime
+
+
+@pytest.fixture
+def jwt_token():
+    # A mock JWT token for testing purposes
+    return create_access_token(identity='test@example.com')
+
+
+@patch('login.session_scope')  # Patching the session_scope function
+def test_create_user_session(mock_session_scope, jwt_token):
+    # Arrange: Set up the mock session and the data that will be passed in the function
+    mock_session = mock_session_scope.return_value.__enter__.return_value
+    user_email = 'test@example.com'
+    user_name = 'Test User'
+    psid = '12345'
+
+    # Act: Call the function being tested
+    create_user_session(jwt_token, user_email, user_name, psid)
+
+    # Assert: Check that session.add() was called with the correct data
+    session_record = UserSession(
+        employee_id=psid,
+        email=user_email,
+        name=user_name,
+        login_time=datetime.utcnow(),
+        token=jwt_token,
+        is_active=True
+    )
+    mock_session.add.assert_called_once_with(session_record)
+    mock_session_scope.return_value.__exit__.assert_called_once()
+
+
+@patch('login.session_scope')
+def test_save_user_information(mock_session_scope):
+    # Arrange: Set up mock session and test data
+    mock_session = mock_session_scope.return_value.__enter__.return_value
+    user_data = {
+        'user_psid': '12345',
+        'user_email': 'test@example.com',
+        'user_name': 'Test User',
+        'user_language': 'en',
+        'user_country': 'US',
+        'user_tz': 'UTC',
+        'user_region': 'NA',
+        'user_adgroups': 'Group1|Group2',
+    }
+
+    # Mock an existing user query result
+    mock_session.query.return_value.filter_by.return_value.one_or_none.return_value = None
+
+    # Act: Call the function being tested
+    save_user_information(user_data)
+
+    # Assert: Check that session.add() was called with the correct data
+    user = PulseUserDetails(
+        user_id=user_data["user_psid"],
+        user_email=user_data["user_email"],
+        user_name=user_data["user_name"],
+        user_lang=user_data["user_language"],
+        user_country=user_data["user_country"],
+        user_timezone=user_data["user_tz"],
+        user_created_date=datetime.utcnow(),
+        user_modified_date=datetime.utcnow(),
+        user_region=user_data["user_region"],
+        user_adgroup_list=user_data["user_adgroups"]
+    )
+    mock_session.add.assert_called_once_with(user)
+    mock_session_scope.return_value.__exit__.assert_called_once()
+
+
+@patch('login.session_scope')
+def test_save_roles_information(mock_session_scope):
+    # Arrange: Set up mock session and test data
+    mock_session = mock_session_scope.return_value.__enter__.return_value
+    ad_groups = ['Group1', 'Group2']
+
+    # Mock existing roles in the database
+    mock_session.query.return_value.filter.return_value.all.return_value = [('Group1',)]
+
+    # Act: Call the function being tested
+    save_roles_information(ad_groups)
+
+    # Assert: Check that session.bulk_save_objects() was called with new roles
+    new_roles = [
+        PulseRolesDetails(
+            ad_group_name='Group2',
+            service_name='Unknown',
+            created_date=datetime.utcnow(),
+            modified_date=datetime.utcnow(),
+            ad_desc='Description',
+            is_active=True
+        )
+    ]
+    mock_session.bulk_save_objects.assert_called_once_with(new_roles)
+    mock_session_scope.return_value.__exit__.assert_called_once()
+
+
+@patch('login.session_scope')
+def test_create_user_session_database_error(mock_session_scope, jwt_token):
+    # Arrange: Mock the session to raise an SQLAlchemyError
+    mock_session_scope.side_effect = SQLAlchemyError
+    user_email = 'test@example.com'
+    user_name = 'Test User'
+    psid = '12345'
+
+    # Act: Call the function and capture the response
+    response = create_user_session(jwt_token, user_email, user_name, psid)
+
+    # Assert: Ensure that the response is the expected error message
+    assert response[0].json == {"msg": "Database error"}
+    assert response[1] == 500
+
+Key Changes:
+
+1. Session Management:
+
+The unit test now uses the session_scope context manager, which has been patched to mock the behavior of your real database session. This allows for testing database operations without actually connecting to a real database.
+
+
+
+2. Mocking Session Operations:
+
+The tests now mock database operations, such as session.add(), session.bulk_save_objects(), and session.query(). This ensures that the tests focus on the logic in your functions, not the database interaction.
+
+
+
+3. Handling Errors:
+
+The test_create_user_session_database_error test checks how your application behaves when a database error occurs by simulating an SQLAlchemyError.
+
+
+
+
+Running the Tests:
+
+You can run the tests using pytest as before. The tests will simulate the database operations and verify that your code correctly interacts with the database layer.
+
+pytest -v
+
+This structure should align well with your actual login.py logic and allow for effective testing of your session and user management functions.
+
+
+
+--------
+
+
+sample
+
+
+To create unit tests using pytest for your Flask-based VolumeMatrixMakerResource, we need to mock the database interactions, JWT token validation, and external dependencies. I'll give you an example of how to structure the tests for each of the HTTP methods (GET, POST, PUT, and DELETE). For simplicity, we will use unittest.mock to mock the database session and any other external dependencies.
+
+First, ensure that you have pytest and pytest-mock installed:
+
+pip install pytest pytest-mock
+
+Here's an example of unit tests for your Flask resource:
+
+Test File: test_volumematrix_maker.py
+
+import pytest
+from unittest.mock import patch, MagicMock
+from flask import Flask, jsonify
+from flask_jwt_extended import create_access_token
+from app.resources.volume_matrix_maker import VolumeMatrixMakerResource, bp
+from app.models.model_designer import VolumeStoreRequests, VolumeStoreConfigRequests
+from app.database import session_scope
+
+# Create a Flask application for testing
+@pytest.fixture
+def app():
+    app = Flask(__name__)
+    app.config['JWT_SECRET_KEY'] = 'super-secret'
+    app.register_blueprint(bp)
+    yield app
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+# Helper function to generate a JWT token
+def generate_token(app, user_id):
+    with app.app_context():
+        token = create_access_token(identity="test@example.com", additional_claims={"user_id": user_id, "user_name": "Test User"})
+    return token
+
+# Test GET method
+@patch('app.database.session_scope')
+def test_get_volumematrix_success(mock_session_scope, client, app):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mock database query result
+    mock_session.query().filter_by().all.return_value = [
+        VolumeStoreRequests(request_id=1, count=10, approver_1="approver", approver_1_email="approver@example.com",
+                            approver_1_name="Approver Name", req_created_date="2023-01-01", req_sent_date="2023-01-02",
+                            approver_action_date="2023-01-03", modified_date="2023-01-04", status="open", comments="Test")
+    ]
+
+    token = generate_token(app, user_id=123)
+    headers = {'Authorization': f'Bearer {token}'}
+    response = client.get('/api/volumematrix-maker/', headers=headers)
+
+    assert response.status_code == 200
+    assert len(response.json) == 1
+    assert response.json[0]['requestId'] == 1
+
+# Test POST method
+@patch('app.database.session_scope')
+def test_post_volumematrix_success(mock_session_scope, client, app):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    token = generate_token(app, user_id=123)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    # Mock the payload
+    data = {
+        "workflowId": 1,
+        "processNameId": 2,
+        "businessLevelId": 3,
+        "deliveryServiceId": 4,
+        "pattern": [
+            {
+                "name": "Pattern 1",
+                "fields": [
+                    {"keyName": "Field1", "layout": "Layout1", "type": "Button"},
+                    {"keyName": "Field2", "layout": "Layout2", "type": "Input"}
+                ]
+            }
+        ]
+    }
+
+    response = client.post('/api/volumematrix-maker/', json=data, headers=headers)
+
+    assert response.status_code == 201
+    assert response.json['message'] == "Volume Matrix added successfully"
+
+# Test POST with duplicate key
+@patch('app.database.session_scope')
+def test_post_volumematrix_duplicate_key(mock_session_scope, client, app):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    token = generate_token(app, user_id=123)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    # Mock the payload with duplicate key
+    data = {
+        "workflowId": 1,
+        "processNameId": 2,
+        "businessLevelId": 3,
+        "deliveryServiceId": 4,
+        "pattern": [
+            {
+                "name": "Pattern 1",
+                "fields": [
+                    {"keyName": "Field1", "layout": "Layout1", "type": "Button"},
+                    {"keyName": "Field1", "layout": "Layout2", "type": "Input"}  # Duplicate key
+                ]
+            }
+        ]
+    }
+
+    response = client.post('/api/volumematrix-maker/', json=data, headers=headers)
+
+    assert response.status_code == 400
+    assert response.json['message'] == "Duplicate keys found within pattern Pattern 1."
+
+# Test PUT method
+@patch('app.database.session_scope')
+def test_put_volumematrix_success(mock_session_scope, client, app):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    token = generate_token(app, user_id=123)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    # Mock the payload
+    data = {
+        "requestIds": [1, 2, 3],
+        "approverInfo": [{"id": 1, "email": "approver@example.com", "name": "Approver"}]
+    }
+
+    response = client.put('/api/volumematrix-maker/', json=data, headers=headers)
+
+    assert response.status_code == 200
+    assert response.json['message'] == "3 request(s) have been sent for approval"
+
+# Test DELETE method
+@patch('app.database.session_scope')
+def test_delete_volumematrix_success(mock_session_scope, client, app):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    token = generate_token(app, user_id=123)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    # Mock the payload
+    data = {"requestIds": [1, 2, 3]}
+
+    response = client.delete('/api/volumematrix-maker/', json=data, headers=headers)
+
+    assert response.status_code == 200
+    assert response.json['message'] == "Volume Request entries [1, 2, 3] deleted successfully"
+
+Key Points:
+
+1. Fixtures:
+
+app fixture sets up the Flask app and registers the blueprint.
+
+client fixture creates a test client for making HTTP requests.
+
+
+
+2. JWT Token:
+
+generate_token function generates a valid JWT token to simulate authenticated requests.
+
+
+
+3. Mocking Database Interactions:
+
+mock_session_scope patches the session_scope context manager to avoid real database calls. Instead, it uses mock objects (MagicMock) for testing.
+
+
+
+4. Test Cases:
+
+test_get_volumematrix_success: Tests the GET request, mocking the response from the database.
+
+test_post_volumematrix_success: Tests the POST request to ensure a successful volume matrix creation.
+
+test_post_volumematrix_duplicate_key: Tests for duplicate key handling in the POST request.
+
+test_put_volumematrix_success: Tests the PUT request for updating volume matrix records.
+
+test_delete_volumematrix_success: Tests the DELETE request to mark volume matrix entries as inactive.
+
+
+
+
+How to Run the Tests:
+
+To run the tests, execute the following command in your terminal:
+
+pytest test_volumematrix_maker.py
+
+These tests should cover the basic functionality of your resource, and you can expand them further depending on more specific validation rules or edge cases.
+
+
+
+-------
+
+real 
+
+To properly handle failure scenarios in your unit tests, we need to consider situations where the VolumeMatrixMakerResource might fail. These scenarios could include:
+
+Missing or invalid data in requests
+
+Authorization failures (JWT token errors)
+
+Database errors (e.g., record not found, session commit failure)
+
+
+Here’s how you can write tests for those failure cases using pytest.
+
+Updated Test Cases for Failure Scenarios:
+
+1. GET Failure Scenarios:
+
+Invalid token or missing token
+
+Database query returning no results
+
+
+2. POST Failure Scenarios:
+
+Missing required fields in the request
+
+Duplicate keys in the request (already covered in the previous test)
+
+
+3. PUT Failure Scenarios:
+
+Missing request ID or invalid request payload
+
+
+4. DELETE Failure Scenarios:
+
+No request IDs provided
+
+Database failure
+
+
+Here’s how you can structure these tests:
+
+Test File: test_volumematrix_maker_failures.py
+
+import pytest
+from unittest.mock import patch, MagicMock
+from flask import Flask, jsonify
+from flask_jwt_extended import create_access_token
+from app.resources.volume_matrix_maker import VolumeMatrixMakerResource, bp
+from app.models.model_designer import VolumeStoreRequests
+from app.database import session_scope
+
+@pytest.fixture
+def app():
+    app = Flask(__name__)
+    app.config['JWT_SECRET_KEY'] = 'super-secret'
+    app.register_blueprint(bp)
+    yield app
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+def generate_token(app, user_id):
+    with app.app_context():
+        token = create_access_token(identity="test@example.com", additional_claims={"user_id": user_id, "user_name": "Test User"})
+    return token
+
+### Failure Scenario: Invalid or Missing JWT Token ###
+
+def test_get_volumematrix_missing_token(client):
+    response = client.get('/api/volumematrix-maker/')
+    assert response.status_code == 401
+    assert 'Missing Authorization Header' in response.json['msg']
+
+def test_get_volumematrix_invalid_token(client, app):
+    headers = {'Authorization': 'Bearer invalid_token'}
+    response = client.get('/api/volumematrix-maker/', headers=headers)
+    assert response.status_code == 422
+    assert 'Invalid token' in response.json['msg']
+
+### Failure Scenario: GET Request - No Results Found ###
+
+@patch('app.database.session_scope')
+def test_get_volumematrix_no_data_found(mock_session_scope, client, app):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+    mock_session.query().filter_by().all.return_value = []
+
+    token = generate_token(app, user_id=123)
+    headers = {'Authorization': f'Bearer {token}'}
+    response = client.get('/api/volumematrix-maker/', headers=headers)
+
+    assert response.status_code == 404
+    assert response.json['message'] == "No Volume Store Requests found."
+
+### Failure Scenario: POST Request - Missing Required Fields ###
+
+@patch('app.database.session_scope')
+def test_post_volumematrix_missing_fields(mock_session_scope, client, app):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    token = generate_token(app, user_id=123)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    # Payload missing required fields (e.g., pattern)
+    data = {
+        "workflowId": 1,
+        "processNameId": 2,
+        "businessLevelId": 3,
+        "deliveryServiceId": 4,
+        # 'pattern' is missing here
+    }
+
+    response = client.post('/api/volumematrix-maker/', json=data, headers=headers)
+
+    assert response.status_code == 400
+    assert response.json['message'] == "Missing required fields: pattern."
+
+### Failure Scenario: PUT Request - Missing Request IDs ###
+
+@patch('app.database.session_scope')
+def test_put_volumematrix_missing_request_ids(mock_session_scope, client, app):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    token = generate_token(app, user_id=123)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    # Payload with missing requestIds
+    data = {
+        "approverInfo": [{"id": 1, "email": "approver@example.com", "name": "Approver"}]
+    }
+
+    response = client.put('/api/volumematrix-maker/', json=data, headers=headers)
+
+    assert response.status_code == 400
+    assert response.json['message'] == "Missing requestIds in the request."
+
+### Failure Scenario: PUT Request - Empty Approver Info ###
+
+@patch('app.database.session_scope')
+def test_put_volumematrix_missing_approver_info(mock_session_scope, client, app):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    token = generate_token(app, user_id=123)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    # Payload with empty approverInfo
+    data = {
+        "requestIds": [1, 2, 3],
+        "approverInfo": []
+    }
+
+    response = client.put('/api/volumematrix-maker/', json=data, headers=headers)
+
+    assert response.status_code == 400
+    assert response.json['message'] == "Approver information is missing or invalid."
+
+### Failure Scenario: DELETE Request - No Request IDs ###
+
+@patch('app.database.session_scope')
+def test_delete_volumematrix_missing_request_ids(mock_session_scope, client, app):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    token = generate_token(app, user_id=123)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    # Payload without requestIds
+    data = {}
+
+    response = client.delete('/api/volumematrix-maker/', json=data, headers=headers)
+
+    assert response.status_code == 400
+    assert response.json['message'] == "No request IDs provided."
+
+### Failure Scenario: DELETE Request - Database Error ###
+
+@patch('app.database.session_scope')
+def test_delete_volumematrix_database_failure(mock_session_scope, client, app):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+    mock_session.query().filter_by().delete.side_effect = Exception("Database error")
+
+    token = generate_token(app, user_id=123)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    data = {"requestIds": [1, 2, 3]}
+
+    response = client.delete('/api/volumematrix-maker/', json=data, headers=headers)
+
+    assert response.status_code == 500
+    assert response.json['message'] == "An error occurred while deleting volume requests."
+
+Explanation of the Failure Tests:
+
+JWT Token Failure Tests:
+
+test_get_volumematrix_missing_token: Tests the case where no JWT token is provided.
+
+test_get_volumematrix_invalid_token: Tests the case where an invalid JWT token is provided.
+
+
+GET Failure Tests:
+
+test_get_volumematrix_no_data_found: Tests the case where the database query returns no results, triggering a 404 response.
+
+
+POST Failure Tests:
+
+test_post_volumematrix_missing_fields: Tests the case where the required pattern field is missing from the request, triggering a 400 response.
+
+
+PUT Failure Tests:
+
+test_put_volumematrix_missing_request_ids: Tests the case where the requestIds field is missing from the request payload.
+
+test_put_volumematrix_missing_approver_info: Tests the case where the approverInfo array is empty or missing.
+
+
+DELETE Failure Tests:
+
+test_delete_volumematrix_missing_request_ids: Tests the case where no requestIds are provided in the payload.
+
+test_delete_volumematrix_database_failure: Tests the case where the delete operation encounters a database error, resulting in a 500 internal server error.
+
+
+How to Run the Tests:
+
+To execute the tests, you can run:
+
+pytest test_volumematrix_maker_failures.py
+
+Summary:
+
+These tests ensure that your Flask VolumeMatrixMakerResource is properly handling various failure scenarios, including missing fields, invalid tokens, and database errors. By mocking the database and external dependencies, you can isolate and test the resource’s behavior under different conditions.
+
+
+
+-------
+
+
+
+statuses
+
+Here's the exact pytest unit test code tailored for your VolumeMatrixMakerStatusResource, VolumeMatrixMakerRequestIdResource, VolumeMatrixMakerIdResource, and VolumeMatrixMakerStatusesResource classes. These tests will directly work with your Flask application and SQLAlchemy setup.
+
+import pytest
+from unittest.mock import patch, MagicMock
+from app.resources.volume_matrix_maker import VolumeMatrixMakerStatusResource, \
+    VolumeMatrixMakerRequestIdResource, VolumeMatrixMakerIdResource, VolumeMatrixMakerStatusesResource
+from flask_jwt_extended import create_access_token
+
+# Mock JWT access token creation for authentication
+@pytest.fixture
+def access_token(client):
+    return create_access_token(identity="test_user")
+
+# Mock session_scope for SQLAlchemy
+@pytest.fixture
+def mock_session_scope():
+    with patch('app.resources.volume_matrix_maker.session_scope', autospec=True) as mock_scope:
+        yield mock_scope
+
+# Mock request.get_json for PUT methods
+@pytest.fixture
+def mock_request_json(monkeypatch):
+    monkeypatch.setattr('flask.request.get_json', lambda: {
+        "workflowId": 1,
+        "processNameId": 1,
+        "businessLevelId": 1,
+        "deliveryServiceId": 1,
+        "keyName": "TestKey",
+        "layout": "TestLayout",
+        "remarks": "TestRemarks",
+        "isPrimaryKey": True
+    })
+
+# Test for VolumeMatrixMakerStatusResource (GET by status)
+@pytest.mark.parametrize("status", ["pending", "approved", "invalid_status"])
+@patch('app.resources.volume_matrix_maker.get_jwt_identity', return_value="test_user")
+@patch('app.resources.volume_matrix_maker.get_jwt', return_value={"user_id": 1, "user_name": "Test User"})
+def test_volume_matrix_status_get(mock_get_jwt_identity, mock_get_jwt, mock_session_scope, status, client, access_token):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mock valid query results for different statuses
+    mock_session.query().filter_by().all.return_value = [
+        MagicMock(request_id=1, count=10, req_created_date="2023-10-01", req_sent_date="2023-10-02", 
+                  approver_action_date="2023-10-03", modified_date="2023-10-04", status="approved", comments="None")
+    ]
+
+    headers = {'Authorization': f'Bearer {access_token}'}
+    response = client.get(f'/api/volumematrix-maker/status/{status}', headers=headers)
+    
+    # Success for valid statuses
+    if status in ['pending', 'approved', 'rejected', 'partially approved']:
+        assert response.status_code == 200
+        assert response.json[0]["requestId"] == 1
+    # Failure for invalid status
+    else:
+        assert response.status_code == 500
+
+# Test for VolumeMatrixMakerRequestIdResource (GET by request_id)
+@patch('app.resources.volume_matrix_maker.get_jwt_identity', return_value="test_user")
+@patch('app.resources.volume_matrix_maker.get_jwt', return_value={"user_id": 1, "user_name": "Test User"})
+def test_volume_matrix_request_id_get(mock_get_jwt_identity, mock_get_jwt, mock_session_scope, client, access_token):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    mock_session.query().outerjoin().filter.return_value.all.return_value = [
+        MagicMock(request_id=1, workflow_name="Test Workflow", field_name="TestField", field_layout="TestLayout", status="pending")
+    ]
+
+    headers = {'Authorization': f'Bearer {access_token}'}
+    response = client.get('/api/volumematrix-maker/request-id/1', headers=headers)
+
+    assert response.status_code == 200
+    assert response.json[0]["requestId"] == 1
+
+# Test for VolumeMatrixMakerIdResource (PUT)
+@patch('app.resources.volume_matrix_maker.get_jwt_identity', return_value="test_user")
+@patch('app.resources.volume_matrix_maker.get_jwt', return_value={"user_id": 1, "user_name": "Test User"})
+def test_volume_matrix_update(mock_get_jwt_identity, mock_get_jwt, mock_session_scope, mock_request_json, client, access_token):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mock volume object
+    mock_volume = MagicMock()
+    mock_session.query().get.return_value = mock_volume
+
+    headers = {'Authorization': f'Bearer {access_token}'}
+    response = client.put('/api/volumematrix-maker/request-id/id/1', headers=headers)
+
+    assert response.status_code == 200
+    assert response.json['message'] == 'Volume entry updated successfully'
+
+# Test for VolumeMatrixMakerIdResource (DELETE)
+@patch('app.resources.volume_matrix_maker.get_jwt_identity', return_value="test_user")
+@patch('app.resources.volume_matrix_maker.get_jwt', return_value={"user_id": 1, "user_name": "Test User"})
+def test_volume_matrix_delete(mock_get_jwt_identity, mock_get_jwt, mock_session_scope, client, access_token):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mock volume entry to delete
+    mock_volume = MagicMock()
+    mock_session.query().get.return_value = mock_volume
+    mock_session.query().filter_by().first.return_value = MagicMock()
+
+    headers = {'Authorization': f'Bearer {access_token}'}
+    response = client.delete('/api/volumematrix-maker/request-id/id/1', headers=headers)
+
+    assert response.status_code == 200
+    assert response.json['message'] == 'Volume entry deleted successfully'
+
+# Test for VolumeMatrixMakerStatusesResource (GET statuses)
+@patch('app.resources.volume_matrix_maker.get_jwt_identity', return_value="test_user")
+@patch('app.resources.volume_matrix_maker.get_jwt', return_value={"user_id": 1, "user_name": "Test User"})
+def test_volume_matrix_statuses_get(mock_get_jwt_identity, mock_get_jwt, mock_session_scope, client, access_token):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mock status data
+    mock_session.query().all.return_value = [
+        MagicMock(status="Filed"), MagicMock(status="Cancelled"), MagicMock(status="Diarized")
+    ]
+
+    headers = {'Authorization': f'Bearer {access_token}'}
+    response = client.get('/api/volumematrix-maker/statuses/', headers=headers)
+
+    assert response.status_code == 200
+    assert "Filed" in response.json
+    assert "Cancelled" in response.json
+
+Explanation:
+
+1. Fixtures:
+
+access_token: Generates a JWT token to simulate user authentication.
+
+mock_session_scope: Mocks the session context manager that wraps around SQLAlchemy operations.
+
+mock_request_json: Mocks request.get_json() used in PUT operations.
+
+
+
+2. Tests:
+
+GET by status: Tests VolumeMatrixMakerStatusResource to fetch volume matrix entries by status. It handles valid statuses (pending, approved, etc.) and an invalid status (invalid_status).
+
+GET by request ID: Tests VolumeMatrixMakerRequestIdResource for fetching entries by request ID.
+
+PUT (Update): Tests the PUT method in VolumeMatrixMakerIdResource for updating an existing volume matrix entry.
+
+DELETE: Tests the DELETE method for removing a volume matrix entry by ID.
+
+GET statuses: Tests VolumeMatrixMakerStatusesResource to retrieve a list of volume matrix statuses.
+
+
+
+3. Mocking:
+
+SQLAlchemy session operations are mocked to simulate database interactions.
+
+JWT methods are patched to simulate authenticated users.
+
+Flask request.get_json() is mocked to supply JSON payloads for PUT tests.
+
+
+
+
+Running the tests:
+
+1. Install pytest and pytest-flask:
+
+pip install pytest pytest-flask
+
+
+2. Run the tests using:
+
+pytest
+
+
+
+This setup is designed to work with your Flask and SQLAlchemy application. You can integrate and run these tests directly to validate your APIs. Let me know if you need more adjustments or explanations!
+
+
+
+-----------
+
+
+
+checkerrr....unit
+
+To create unit tests for the given Flask resource code using pytest, you will need to mock certain parts of the application, particularly the database interactions and JWT token handling. Below is a set of unit tests that cover the key functionalities of your VolumeMatrixCheckerResource and associated resources.
+
+Here's how you can structure your tests using pytest and pytest-flask:
+
+1. Test Setup
+
+Ensure you have the required packages installed:
+
+pip install pytest pytest-flask pytest-mock flask-jwt-extended
+
+2. Unit Tests
+
+Create a file named test_volume_matrix_checker.py and add the following test cases:
+
+import pytest
+from flask import json
+from app import create_app
+from app.database import session_scope
+from app.models.model_designer import VolumeStoreRequests, VolumeStoreConfigRequests
+from unittest.mock import patch
+
+@pytest.fixture
+def client():
+    app = create_app()
+    with app.test_client() as client:
+        yield client
+
+@pytest.fixture
+def auth_header():
+    return {
+        "Authorization": "Bearer test_token"
+    }
+
+@pytest.fixture
+def mock_session():
+    with patch('app.database.session_scope') as mock:
+        yield mock
+
+def test_get_volume_matrix_checker(client, auth_header, mock_session):
+    # Mocking the database return value
+    mock_app_requests = [
+        VolumeStoreRequests(
+            request_id=1,
+            count=5,
+            approver_1="user_1",
+            approver_1_email="approver1@example.com",
+            approver_1_name="Approver One",
+            creator_name="Creator One",
+            creator_email="creator@example.com",
+            created_by="creator_1",
+            req_created_date="2024-01-01",
+            req_sent_date="2024-01-02",
+            approver_action_date="2024-01-03",
+            modified_date="2024-01-04",
+            status="pending",
+            comments="Test comment"
+        )
+    ]
+    mock_session.return_value.__enter__.return_value.query.return_value.filter_by.return_value.all.return_value = mock_app_requests
+
+    # Sending the GET request
+    response = client.get('/api/volumematrix-checker', headers=auth_header)
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert len(data) == 1
+    assert data[0]['requestId'] == 1
+    assert data[0]['creatorName'] == "Creator One"
+
+def test_put_volume_matrix_checker(client, auth_header, mock_session):
+    # Mocking the database return values
+    mock_session.return_value.__enter__.return_value.execute.return_value.fetchone.return_value = ('pending', 'user_1', 'creator_1', '2024-01-01')
+    mock_session.return_value.__enter__.return_value.execute.return_value.scalars.return_value.all.return_value = []
+
+    payload = {
+        "request_id": 1,
+        "data": [
+            {"id": 1, "status": "approved"}
+        ]
+    }
+
+    # Sending the PUT request
+    response = client.put('/api/volumematrix-checker', headers=auth_header, json=payload)
+
+    assert response.status_code == 200
+    assert json.loads(response.data)['message'] == 'Records updated and moved to the main table successfully'
+
+def test_put_volume_matrix_checker_missing_request_id(client, auth_header):
+    payload = {
+        "data": [
+            {"id": 1, "status": "approved"}
+        ]
+    }
+
+    # Sending the PUT request
+    response = client.put('/api/volumematrix-checker', headers=auth_header, json=payload)
+
+    assert response.status_code == 400
+    assert json.loads(response.data)['message'] == 'Missing request_id'
+
+def test_get_volume_matrix_checker_status(client, auth_header, mock_session):
+    # Mocking the database return value
+    mock_app_requests = [
+        VolumeStoreRequests(
+            request_id=1,
+            count=5,
+            approver_1="user_1",
+            approver_1_email="approver1@example.com",
+            approver_1_name="Approver One",
+            creator_name="Creator One",
+            creator_email="creator@example.com",
+            created_by="creator_1",
+            req_created_date="2024-01-01",
+            req_sent_date="2024-01-02",
+            approver_action_date="2024-01-03",
+            modified_date="2024-01-04",
+            status="pending",
+            comments="Test comment"
+        )
+    ]
+    mock_session.return_value.__enter__.return_value.query.return_value.filter_by.return_value.all.return_value = mock_app_requests
+
+    # Sending the GET request
+    response = client.get('/api/volumematrix-checker/status/pending', headers=auth_header)
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert len(data) == 1
+    assert data[0]['requestId'] == 1
+
+def test_get_volume_matrix_checker_request_id(client, auth_header, mock_session):
+    # Similar to the above test for the request_id functionality
+    # Set up appropriate mock return values and assertions as needed.
+    pass
+
+3. Explanation of Tests
+
+Fixtures: The client fixture sets up a test client for the Flask app. The auth_header fixture provides a mock JWT token for authentication. The mock_session fixture mocks the database session scope.
+
+Tests:
+
+test_get_volume_matrix_checker: Tests the GET endpoint by mocking a database response and asserting the correct JSON response.
+
+test_put_volume_matrix_checker: Tests the PUT endpoint for updating records, checking for success response.
+
+test_put_volume_matrix_checker_missing_request_id: Tests the error handling when the request ID is missing.
+
+test_get_volume_matrix_checker_status: Tests the GET endpoint by status, checking for correct data returned.
+
+
+
+4. Running the Tests
+
+You can run your tests using the command:
+
+pytest test_volume_matrix_checker.py
+
+This structure provides a solid foundation for testing your Flask resources using pytest, and you can extend the tests further based on additional functionalities in your code. Make sure to replace any specific data and expected outputs as necessary based on your actual models and application logic.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 To write unit tests for the VolumeMatrixMakerResource class in your Flask application, we'll use Python's unittest module and Flask's test client. Below is an example of how you can structure your unit tests for each HTTP method (GET, POST, PUT, and DELETE) in the VolumeMatrixMakerResource class.
 
 For testing, you should mock dependencies such as JWT authentication and the database session (session_scope) to isolate your logic from external components.
