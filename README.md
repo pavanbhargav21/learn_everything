@@ -1,3 +1,146 @@
+
+Here are some unit test cases using pytest for the WhitelistMakerResource class based on the provided code. These tests mock external dependencies such as JWT authentication, database sessions, and HTTP requests.
+
+import pytest
+from flask import Flask, jsonify
+from flask_jwt_extended import create_access_token
+from unittest.mock import patch, MagicMock
+from app.resources.whitelists_maker import WhitelistMakerResource
+from app.models.model_designer import WhitelistStoreRequests, Workflow, WhitelistStoreConfigRequests, Whitelist
+from app.database import session_scope
+
+@pytest.fixture
+def app():
+    app = Flask(__name__)
+    app.config['JWT_SECRET_KEY'] = 'super-secret'  # Change this!
+    return app
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+@pytest.fixture
+def token(app):
+    # Creating a JWT token for testing
+    with app.app_context():
+        token = create_access_token(identity="test_user@example.com", additional_claims={"user_id": 1, "user_name": "Test User"})
+    return token
+
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_get_whitelist_requests(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session.query().filter_by().all.return_value = [
+        WhitelistStoreRequests(
+            request_id=1, count=1, approver_1="Approver 1", approver_1_email="approver1@example.com",
+            approver_1_name="Approver One", req_created_date="2023-10-01", req_sent_date="2023-10-02",
+            approver_action_date="2023-10-03", modified_date="2023-10-04", status="approved", comments="Test Comment"
+        )
+    ]
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get('/api/whitelists-maker', headers=headers)
+    data = response.get_json()
+
+    assert response.status_code == 200
+    assert len(data) == 1
+    assert data[0]['requestId'] == 1
+
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+@patch('validators.url')
+def test_post_whitelist_request(mock_validators_url, mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_validators_url.return_value = True
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    payload = {
+        "workflow_name": "Test Workflow",
+        "url": "https://example.com",
+        "titles": "Title 1, Title 2",
+        "environment": "prod",
+        "screenCapture": "yes"
+    }
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post('/api/whitelists-maker', json=payload, headers=headers)
+
+    assert response.status_code == 201
+    assert response.get_json()['message'] == 'Whitelist request created successfully'
+
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_post_whitelist_request_invalid_url(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    payload = {
+        "workflow_name": "Test Workflow",
+        "url": "invalid_url",
+        "titles": "Title 1, Title 2",
+        "environment": "prod"
+    }
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post('/api/whitelists-maker', json=payload, headers=headers)
+
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Invalid URL'
+
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_delete_whitelist_request(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session.query().filter_by().first.return_value = WhitelistStoreRequests(
+        request_id=1, created_by=1, is_active=True
+    )
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    payload = {"request_id": 1}
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.delete('/api/whitelists-maker', json=payload, headers=headers)
+
+    assert response.status_code == 200
+    assert response.get_json()['message'] == 'Whitelist request deleted successfully'
+
+Key Points:
+
+GET Request Test (test_get_whitelist_requests): Mocks session queries and returns a sample whitelist request.
+
+POST Request Tests:
+
+One test validates successful creation of a whitelist request.
+
+Another test handles an invalid URL scenario.
+
+
+DELETE Request Test: Verifies the correct deletion of a whitelist request based on the request ID.
+
+
+These tests cover normal operations and edge cases, ensuring the main functionalities of the WhitelistMakerResource class.
+
+
+
+
+
+
 user session 
 
 login.py
