@@ -1,4 +1,187 @@
 
+To modify your test_delete_whitelist_request to handle a list of request IDs, you need to adjust both the test and your mock setup to handle the multiple request_id scenario. This involves changing the payload to expect a list, iterating over the IDs, and mocking the behavior of the session accordingly.
+
+Here’s an updated version of your test to handle multiple request IDs in the DELETE request:
+
+Updated Test Case for Deleting Multiple Request IDs
+
+from unittest.mock import MagicMock, patch
+from app.models import WhitelistStoreRequests  # Import your model if not done already
+
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_delete_whitelist_request(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    
+    # Mock the query to return multiple requests when filtered by request_id
+    def mock_filter_by(request_id):
+        if request_id in [1, 2]:
+            return MagicMock(first=lambda: WhitelistStoreRequests(
+                request_id=request_id, created_by=1, is_active=True
+            ))
+        else:
+            return MagicMock(first=lambda: None)  # Simulate no entry found for other IDs
+
+    # Mock the session query to handle a list of IDs
+    mock_session.query().filter_by.side_effect = mock_filter_by
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # List of request IDs in the payload to be deactivated
+    payload = {"request_ids": [1, 2]}  # Sending multiple request_ids
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.delete('/api/whitelists-maker', json=payload, headers=headers)
+
+    assert response.status_code == 200
+    assert response.get_json()['message'] == 'Whitelist requests deleted successfully'
+
+    # Additional checks to ensure requests were deactivated (is_active set to False)
+    # Here you can add asserts for each request in the list to check the mock session behavior
+    for request_id in payload['request_ids']:
+        request = mock_session.query().filter_by(request_id=request_id).first()
+        assert request.is_active == False
+
+Key Changes:
+
+1. Payload Adjustment: The payload is now expecting a list of request IDs: "request_ids": [1, 2]. This matches your logic of checking for multiple IDs.
+
+
+2. Mocking the filter_by for Multiple IDs: The mock_filter_by function simulates the database query by checking if the request ID exists in the list. If it exists (e.g., ID 1 or 2), it returns a mock WhitelistStoreRequests object; otherwise, it returns None.
+
+
+3. Deactivation Check: After the DELETE request, you can loop through the list of request IDs and assert that their is_active field was set to False.
+
+
+
+This approach ensures that your test works with a list of request IDs and that it can properly handle the case where some request IDs are found and others may not be, without failing.
+
+
+
+
+
+
+----------
+test
+
+To extend the test suite and cover invalid data and failure scenarios for your endpoints, you'll need to mock the possible failures (e.g., invalid payload, missing data, or database issues). Below is how you can add these test cases based on the successful scenarios you provided earlier.
+
+Extended Test Cases:
+
+Invalid Data Test Case
+
+Here, we simulate sending invalid payloads to check if the API properly handles validation errors.
+
+import pytest
+from unittest.mock import patch
+
+# Mock payload for invalid data tests (e.g., missing required fields, wrong data types)
+@pytest.mark.parametrize('invalid_payload', [
+    {},  # Completely empty payload
+    {'request_id': 'string_instead_of_integer'},  # Wrong data type
+    {'end_date': '2025-01-01'},  # Missing required fields like 'start_date' and others
+])
+def test_add_demand_invalid_data(client, invalid_payload):
+    response = client.post('/demand', json=invalid_payload)
+    
+    # Assert that the response is 400 (Bad Request) and contains an error message
+    assert response.status_code == 400
+    assert response.json.get('error') == 'Invalid data provided'
+
+Duplicate Entry Failure Test Case
+
+This case covers scenarios where the API might encounter a constraint violation (e.g., duplicate entries).
+
+import pytest
+from unittest.mock import patch
+from sqlalchemy.exc import IntegrityError
+
+@patch('app.models.session_scope')
+def test_add_demand_duplicate_entry(mock_session_scope, client, valid_payload):
+    # Mock the SQLAlchemy session to raise an IntegrityError (duplicate entry)
+    mock_session = mock_session_scope.return_value.__enter__.return_value
+    mock_session.add.side_effect = IntegrityError("Duplicate entry", None, None)
+    
+    response = client.post('/demand', json=valid_payload)
+    
+    # Assert that the response is 409 (Conflict) for duplicate entries
+    assert response.status_code == 409
+    assert response.json.get('error') == 'Duplicate entry found'
+
+Missing Workflow Scenario Test Case
+
+You can simulate an invalid workflow scenario by mocking the database query to return no results for the given workflow name.
+
+@patch('app.models.session_scope')
+def test_add_demand_missing_workflow(client, valid_payload):
+    # Simulate a missing workflow scenario (returns None or raises an exception)
+    with patch('app.models.get_workflow_by_name', return_value=None):
+        response = client.post('/demand', json=valid_payload)
+        
+        # Assert that the response is 404 (Not Found) when the workflow is missing
+        assert response.status_code == 404
+        assert response.json.get('error') == 'Workflow not found'
+
+Database Connection Failure Test Case
+
+This simulates an unexpected failure at the database level, such as a failed connection.
+
+from sqlalchemy.exc import OperationalError
+
+@patch('app.models.session_scope')
+def test_add_demand_db_connection_failure(mock_session_scope, client, valid_payload):
+    # Simulate a database connection failure by raising an OperationalError
+    mock_session = mock_session_scope.return_value.__enter__.return_value
+    mock_session.add.side_effect = OperationalError("Database connection failed", None, None)
+    
+    response = client.post('/demand', json=valid_payload)
+    
+    # Assert that the response is 500 (Internal Server Error) for DB failures
+    assert response.status_code == 500
+    assert response.json.get('error') == 'Internal Server Error: Could not complete the request'
+
+Test Case for Invalid Date Format
+
+You can also check whether the API catches invalid date formats.
+
+@pytest.mark.parametrize('invalid_date_payload', [
+    {'request_id': 1234, 'start_date': '13-25-2023'},  # Invalid date format (DD-MM-YYYY)
+    {'request_id': 1234, 'start_date': 'wrong_format'},  # Completely wrong format
+])
+def test_add_demand_invalid_date_format(client, invalid_date_payload):
+    response = client.post('/demand', json=invalid_date_payload)
+    
+    # Assert that the response is 400 (Bad Request) for invalid date formats
+    assert response.status_code == 400
+    assert response.json.get('error') == 'Invalid date format provided'
+
+Explanation:
+
+1. Invalid Data: The payload is missing required fields or has incorrect data types, leading to validation failure with a 400 Bad Request response.
+
+
+2. Duplicate Entry: Mocks an IntegrityError to simulate a database constraint violation (e.g., duplicate request_id), expecting a 409 Conflict response.
+
+
+3. Missing Workflow: The workflow validation check fails, returning a 404 Not Found error when the workflow does not exist.
+
+
+4. Database Connection Failure: Simulates an OperationalError to check if the API returns a 500 Internal Server Error when there's a database connectivity issue.
+
+
+5. Invalid Date Format: Ensures that incorrect date formats in the payload return a 400 Bad Request error.
+
+
+
+These tests ensure the robustness of your API by covering edge cases and common failure scenarios.
+
+
+
+---------++
+
+
 Here are some unit test cases using pytest for the WhitelistMakerResource class based on the provided code. These tests mock external dependencies such as JWT authentication, database sessions, and HTTP requests.
 
 import pytest
