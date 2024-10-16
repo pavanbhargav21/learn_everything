@@ -1,3 +1,67 @@
+
+
+
+from unittest.mock import patch, MagicMock
+import pytest
+
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_delete_whitelist_request(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+
+    # Mock the query for WhitelistStoreRequests
+    def mock_filter_whitelist_store_requests(request_id):
+        if request_id in [1, 2]:
+            return MagicMock(first=lambda: WhitelistStoreRequests(
+                request_id=request_id, created_by=1, is_active=True
+            ))
+        else:
+            return MagicMock(first=lambda: None)
+
+    # Mock the query for WhitelistStoreConfigRequests
+    def mock_filter_whitelist_store_config_requests(request_id):
+        if request_id in [1, 2]:
+            return MagicMock(first=lambda: WhitelistStoreConfigRequests(
+                request_id=request_id, created_by=1, is_active=True
+            ))
+        else:
+            return MagicMock(first=lambda: None)
+
+    # Mock the session query behavior for both tables
+    def mock_query_side_effect(model):
+        if model == WhitelistStoreRequests:
+            return MagicMock(filter_by=mock_filter_whitelist_store_requests)
+        elif model == WhitelistStoreConfigRequests:
+            return MagicMock(filter_by=mock_filter_whitelist_store_config_requests)
+
+    # Set the mock side effect for the session query
+    mock_session.query.side_effect = mock_query_side_effect
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # List of request IDs in the payload to be deactivated
+    payload = {"request_ids": [1, 2]}  # Sending multiple request_ids
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.delete('/api/whitelists-maker', json=payload, headers=headers)
+
+    assert response.status_code == 200
+    assert response.get_json()['message'] == 'Whitelist requests deleted successfully'
+
+    # Verify that is_active is set to False for each request in both tables
+    for request_id in payload['request_ids']:
+        whitelist_request = mock_session.query(WhitelistStoreRequests).filter_by(request_id=request_id).first()
+        assert whitelist_request.is_active == False, f"WhitelistStoreRequests for request_id {request_id} should be deactivated"
+
+        config_request = mock_session.query(WhitelistStoreConfigRequests).filter_by(request_id=request_id).first()
+        assert config_request.is_active == False, f"WhitelistStoreConfigRequests for request_id {request_id} should be deactivated"
+
+
+
+
+
 supply
 
 
