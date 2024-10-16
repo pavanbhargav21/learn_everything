@@ -1,5 +1,75 @@
 
 
+from unittest.mock import patch, MagicMock
+import pytest
+
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_delete_whitelist_request(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+
+    # Mock objects for WhitelistStoreRequests and WhitelistStoreConfigRequests
+    request_entries = [
+        WhitelistStoreRequests(request_id=1, created_by=1, is_active=True),
+        WhitelistStoreRequests(request_id=2, created_by=1, is_active=True)
+    ]
+    
+    config_entries = [
+        WhitelistStoreConfigRequests(request_id=1, created_by=1, is_active=True),
+        WhitelistStoreConfigRequests(request_id=2, created_by=1, is_active=True)
+    ]
+
+    # Mock the query for WhitelistStoreRequests to return a list of entries
+    def mock_filter_whitelist_store_requests(request_id):
+        return MagicMock(all=lambda: [entry for entry in request_entries if entry.request_id == request_id])
+
+    # Mock the query for WhitelistStoreConfigRequests to return a list of entries
+    def mock_filter_whitelist_store_config_requests(request_id):
+        return MagicMock(all=lambda: [entry for entry in config_entries if entry.request_id == request_id])
+
+    # Mock the session query behavior for both tables
+    def mock_query_side_effect(model):
+        if model == WhitelistStoreRequests:
+            return MagicMock(filter_by=mock_filter_whitelist_store_requests)
+        elif model == WhitelistStoreConfigRequests:
+            return MagicMock(filter_by=mock_filter_whitelist_store_config_requests)
+
+    # Set the mock side effect for the session query
+    mock_session.query.side_effect = mock_query_side_effect
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # List of request IDs in the payload to be deactivated
+    payload = {"request_ids": [1, 2]}  # Sending multiple request_ids
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Perform the delete request
+    response = client.delete('/api/whitelists-maker', json=payload, headers=headers)
+
+    # Assert success
+    assert response.status_code == 200
+    assert response.get_json()['message'] == 'Whitelist requests deleted successfully'
+
+    # Now verify that the real code properly deactivated the requests
+    # Ensure that is_active is set to False for each request
+    for request_id in payload['request_ids']:
+        whitelist_requests = mock_session.query(WhitelistStoreRequests).filter_by(request_id=request_id).all()
+        for request in whitelist_requests:
+            assert request.is_active == False, f"WhitelistStoreRequests for request_id {request_id} should be deactivated"
+
+        config_requests = mock_session.query(WhitelistStoreConfigRequests).filter_by(request_id=request_id).all()
+        for config in config_requests:
+            assert config.is_active == False, f"WhitelistStoreConfigRequests for request_id {request_id} should be deactivated"
+
+
+
+
+++-------------
+
+
 
 from unittest.mock import patch, MagicMock
 import pytest
