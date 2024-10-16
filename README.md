@@ -1,3 +1,364 @@
+supply
+
+
+To create unit tests for the SupplierFunction, DeliveryProcess, and L3Process resources, we will follow a similar approach as the previous example. We'll mock the database interactions using unittest.mock, and handle different scenarios like successful data retrieval, missing or invalid inputs, and database errors.
+
+Here's the test code using pytest and mocking:
+
+Unit Tests for SupplierFunction, DeliveryProcess, and L3Process
+
+import pytest
+from unittest.mock import patch, MagicMock
+from flask import jsonify
+from app.models.model_designer import SupplierFunctionMstr, DeliveryFunctionMstr, ProcessFunctionMstr
+
+@pytest.fixture
+def client():
+    from app import create_app
+    app = create_app()
+    return app.test_client()
+
+# Test cases for SupplierFunction endpoint
+@patch('app.resources.supplier_function.session_scope')
+def test_supplier_function_get_success(mock_session_scope, client):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to return some supplier functions
+    mock_session.query().all.return_value = [
+        SupplierFunctionMstr(id=1, sf_name="Supplier 1"),
+        SupplierFunctionMstr(id=2, sf_name="Supplier 2")
+    ]
+
+    response = client.get('/api/supplier_function/')
+    
+    assert response.status_code == 200
+    response_json = response.get_json()
+    assert len(response_json) == 2
+    assert response_json[0]['sf_name'] == "Supplier 1"
+    assert response_json[1]['sf_name'] == "Supplier 2"
+
+
+@patch('app.resources.supplier_function.session_scope')
+def test_supplier_function_get_no_data(mock_session_scope, client):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to return no data
+    mock_session.query().all.return_value = []
+
+    response = client.get('/api/supplier_function/')
+    
+    assert response.status_code == 400
+    assert response.get_json() == {'message': 'please try again'}
+
+
+@patch('app.resources.supplier_function.session_scope')
+def test_supplier_function_get_db_error(mock_session_scope, client):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to raise an exception
+    mock_session.query.side_effect = Exception("Database error")
+
+    response = client.get('/api/supplier_function/')
+    
+    assert response.status_code == 400
+    assert response.get_json() == {'message': 'Database error'}
+
+
+# Test cases for DeliveryProcess endpoint
+@patch('app.resources.delivery_function.session_scope')
+def test_delivery_process_get_success(mock_session_scope, client):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to return some delivery functions
+    mock_session.query().filter_by().all.return_value = [
+        DeliveryFunctionMstr(id=1, df_name="Delivery 1"),
+        DeliveryFunctionMstr(id=2, df_name="Delivery 2")
+    ]
+
+    response = client.get('/api/delivery_function/1')
+    
+    assert response.status_code == 200
+    response_json = response.get_json()
+    assert len(response_json) == 2
+    assert response_json[0]['df_name'] == "Delivery 1"
+    assert response_json[1]['df_name'] == "Delivery 2"
+
+
+@patch('app.resources.delivery_function.session_scope')
+def test_delivery_process_get_invalid_value(mock_session_scope, client):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to return no data
+    mock_session.query().filter_by().all.return_value = []
+
+    response = client.get('/api/delivery_function/999')
+    
+    assert response.status_code == 400
+    assert response.get_json() == {'message': 'Invalid Input'}
+
+
+@patch('app.resources.delivery_function.session_scope')
+def test_delivery_process_get_db_error(mock_session_scope, client):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to raise an exception
+    mock_session.query.side_effect = Exception("Database error")
+
+    response = client.get('/api/delivery_function/1')
+    
+    assert response.status_code == 400
+    assert response.get_json() == {'message': 'Database error'}
+
+
+# Test cases for L3Process endpoint
+@patch('app.resources.l3_process.session_scope')
+def test_l3_process_get_success(mock_session_scope, client):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to return some L3 processes
+    mock_session.query().filter_by().all.return_value = [
+        ProcessFunctionMstr(id=1, pf_name="L3 Process 1"),
+        ProcessFunctionMstr(id=2, pf_name="L3 Process 2")
+    ]
+
+    response = client.get('/api/l3_process/1')
+    
+    assert response.status_code == 200
+    response_json = response.get_json()
+    assert len(response_json) == 2
+    assert response_json[0]['pf_name'] == "L3 Process 1"
+    assert response_json[1]['pf_name'] == "L3 Process 2"
+
+
+@patch('app.resources.l3_process.session_scope')
+def test_l3_process_get_invalid_value(mock_session_scope, client):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to return no data
+    mock_session.query().filter_by().all.return_value = []
+
+    response = client.get('/api/l3_process/999')
+    
+    assert response.status_code == 400
+    assert response.get_json() == {'message': 'Invalid Input'}
+
+
+@patch('app.resources.l3_process.session_scope')
+def test_l3_process_get_db_error(mock_session_scope, client):
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to raise an exception
+    mock_session.query.side_effect = Exception("Database error")
+
+    response = client.get('/api/l3_process/1')
+    
+    assert response.status_code == 400
+    assert response.get_json() == {'message': 'Database error'}
+
+Explanation:
+
+1. Test Setup:
+
+We use pytest for testing and unittest.mock to patch the database interaction (session_scope).
+
+Each test mocks database interactions and simulates expected responses.
+
+
+
+2. Test Cases:
+
+SupplierFunction:
+
+Tests for successful retrieval of supplier functions.
+
+Handles cases where no data is found and raises appropriate errors.
+
+Handles database errors by simulating exceptions.
+
+
+DeliveryProcess:
+
+Tests for valid input and successful retrieval of delivery functions based on sf_id.
+
+Handles invalid input where no data matches the sf_id.
+
+Simulates database errors.
+
+
+L3Process:
+
+Similar to the DeliveryProcess, but for df_id and L3 processes.
+
+Includes tests for successful retrieval, invalid input, and database errors.
+
+
+
+
+
+Running the Tests:
+
+To run these tests, you can execute:
+
+pytest -v
+
+These tests provide good coverage for the GET endpoints of SupplierFunction, DeliveryProcess, and L3Process. Let me know if you need further adjustments!
+
+
+
+----__
+approvers pep
+
+Based on the ApproversDetail endpoint you provided, I will create unit tests for the GET /api/approvers/<adGroupName> endpoint. The tests will cover the following scenarios:
+
+1. Successful request: When valid data is provided.
+
+
+2. Missing adGroupName: When the adGroupName parameter is not passed.
+
+
+3. No users found: When no users match the query.
+
+
+4. Database error handling: In case an exception is raised while querying the database.
+
+
+
+Here's the unit test code using pytest and unittest.mock to patch the database interactions:
+
+Unit Tests for ApproversDetail
+
+import pytest
+from unittest.mock import patch, MagicMock
+from flask import jsonify
+from app.models.model_designer import PulseUserDetails
+
+# Assuming the client fixture is set up for testing Flask
+@pytest.fixture
+def client():
+    from app import create_app
+    app = create_app()  # Assuming you have a function that creates your Flask app
+    return app.test_client()
+
+@patch('app.resources.approvers.session_scope')
+@patch('app.resources.approvers.get_jwt_identity')
+def test_get_approvers_success(mock_get_jwt_identity, mock_session_scope, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to return some users
+    mock_session.query().filter().all.return_value = [
+        PulseUserDetails(user_name="User One", user_email="user1@example.com", user_id=1),
+        PulseUserDetails(user_name="User Two", user_email="user2@example.com", user_id=2)
+    ]
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get('/api/approvers/TestGroup', headers=headers)
+
+    assert response.status_code == 200
+    response_json = response.get_json()
+    
+    assert len(response_json) == 2
+    assert response_json[0]['name'] == "User One"
+    assert response_json[1]['name'] == "User Two"
+
+
+@patch('app.resources.approvers.session_scope')
+@patch('app.resources.approvers.get_jwt_identity')
+def test_get_approvers_missing_adGroupName(mock_get_jwt_identity, mock_session_scope, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get('/api/approvers/', headers=headers)
+
+    assert response.status_code == 400
+    assert response.get_json() == {'error': 'Missing adGroupName parameter'}
+
+
+@patch('app.resources.approvers.session_scope')
+@patch('app.resources.approvers.get_jwt_identity')
+def test_get_approvers_no_users_found(mock_get_jwt_identity, mock_session_scope, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to return no users
+    mock_session.query().filter().all.return_value = []
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get('/api/approvers/TestGroup', headers=headers)
+
+    assert response.status_code == 200
+    assert response.get_json() == []  # No users returned
+
+
+@patch('app.resources.approvers.session_scope')
+@patch('app.resources.approvers.get_jwt_identity')
+def test_get_approvers_database_error(mock_get_jwt_identity, mock_session_scope, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking the query to raise an exception
+    mock_session.query.side_effect = Exception("Database error")
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get('/api/approvers/TestGroup', headers=headers)
+
+    assert response.status_code == 500
+    assert response.get_json() == {'error': 'Database error'}
+
+Explanation:
+
+1. Test Setup: We use pytest for testing and unittest.mock to patch the database interaction and JWT token handling.
+
+
+2. Mocking session_scope: This ensures we mock the database interaction inside session_scope, returning mock user data or raising errors.
+
+
+3. Token Mocking: The get_jwt_identity is patched to simulate an authenticated user.
+
+
+4. Scenarios Covered:
+
+Success Case: The test ensures that when users are found, they are returned in the expected format.
+
+Missing adGroupName: It returns a 400 error if the adGroupName parameter is missing.
+
+No Users Found: The test handles cases where no users are returned from the query.
+
+Database Error: Simulates a database error and checks if a 500 response is returned.
+
+
+
+
+Running the Tests:
+
+To run these tests using pytest, you can simply execute:
+
+pytest -v
+
+These tests provide full coverage for your GET endpoint in the approvers resource. Let me know if you need further modifications or additional test cases!
+
+
+
+
+
+
+
+
 
 To modify your test_delete_whitelist_request to handle a list of request IDs, you need to adjust both the test and your mock setup to handle the multiple request_id scenario. This involves changing the payload to expect a list, iterating over the IDs, and mocking the behavior of the session accordingly.
 
