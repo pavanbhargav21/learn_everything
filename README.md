@@ -1,3 +1,475 @@
+Here's the completion for your code, particularly for the WhitelistMakerRequestIdResource test and the addition of the WhitelistMakerIdResource tests.
+
+# Continuing the test for WhitelistMakerRequestIdResource
+@pytest.mark.parametrize("request_id", range(1, 16))
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_whitelist_maker_request_id_resource_get(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token, request_id):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Find the dummy data that matches the request_id
+    mock_request = next((req for req, _, _ in dummy_data if req.request_id == request_id), None)
+
+    if mock_request and mock_request.is_active:
+        mock_configs = [config for _, configs, _ in dummy_data if configs and configs[0].request_id == request_id and configs[0].is_active]
+        mock_approvals = [approval for _, _, approvals in dummy_data if approvals and approvals[0].request_id == request_id and approvals[0].is_active]
+
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_request
+        mock_session.query.return_value.filter_by.return_value.all.side_effect = [mock_configs, mock_approvals]
+    else:
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get(f'/api/whitelists-maker/request/{request_id}', headers=headers)
+
+    if mock_request:
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['request_id'] == mock_request.request_id
+        assert data['status'] == mock_request.status
+    else:
+        assert response.status_code == 404
+
+# Tests for WhitelistMakerIdResource
+@pytest.mark.parametrize("request_id", range(1, 16))
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_whitelist_maker_id_resource_get(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token, request_id):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Find the dummy data that matches the request_id
+    mock_request = next((req for req, _, _ in dummy_data if req.request_id == request_id), None)
+
+    if mock_request and mock_request.is_active:
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_request
+    else:
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get(f'/api/whitelists-maker/id/{request_id}', headers=headers)
+
+    if mock_request:
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['request_id'] == mock_request.request_id
+        assert data['status'] == mock_request.status
+    else:
+        assert response.status_code == 404
+
+Key Components:
+
+1. test_whitelist_maker_request_id_resource_get: This test checks the behavior of the WhitelistMakerRequestIdResource. It verifies that when a valid request ID is provided, it returns the correct data, and if the request ID is invalid (or inactive), it returns a 404 status code.
+
+
+2. test_whitelist_maker_id_resource_get: This test is similar to the previous one, checking the response of the WhitelistMakerIdResource. It ensures that the appropriate request details are returned for active requests.
+
+
+
+Additional Notes:
+
+Each test utilizes mock objects to simulate the database and JWT identity functions.
+
+The dummy data is pre-populated and used to verify different states of the requests (active, inactive, etc.).
+
+Ensure that the endpoint routes (/api/whitelists-maker/request/{request_id} and /api/whitelists-maker/id/{request_id}) are correctly defined in your Flask application.
+
+
+
+
+
+
+Here's the complete code for the WhitelistMakerRequestIdResource test and the rest of your code:
+
+# Tests for WhitelistMakerRequestIdResource
+@pytest.mark.parametrize("request_id", range(1, 16))
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_whitelist_maker_request_id_resource_get(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token, request_id):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Filter dummy data based on request_id
+    mock_requests = [req for req, _, _ in dummy_data if req.request_id == request_id and req.is_active]
+    mock_session.query.return_value.filter_by.return_value.all.return_value = mock_requests
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get(f'/api/whitelists-maker/request/{request_id}', headers=headers)
+
+    if mock_requests:
+        assert response.status_code == 200
+        data = response.get_json()
+        assert len(data) == len(mock_requests)
+        assert all(item['request_id'] == request_id for item in data)
+    else:
+        assert response.status_code == 404  # Not found if no active request exists for the given request_id
+
+# Tests for WhitelistMakerIdResource
+@pytest.mark.parametrize("id", range(1, 16))
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_whitelist_maker_id_resource_get(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token, id):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Filter dummy data based on ID
+    mock_configs = [config for _, configs, _ in dummy_data if any(c.id == id for c in configs)]
+    mock_session.query.return_value.filter_by.return_value.all.return_value = mock_configs
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get(f'/api/whitelists-maker/id/{id}', headers=headers)
+
+    if mock_configs:
+        assert response.status_code == 200
+        data = response.get_json()
+        assert len(data) == len(mock_configs)
+        assert all(item['id'] == id for item in data)
+    else:
+        assert response.status_code == 404  # Not found if no active config exists for the given ID
+
+Explanation:
+
+1. Test for WhitelistMakerRequestIdResource:
+
+This test checks if the correct requests are returned based on the request_id. If the request exists and is active, it should return a 200 status with the corresponding data. If no active request is found, it should return a 404 status.
+
+
+
+2. Test for WhitelistMakerIdResource:
+
+Similar to the previous test, but it checks the configurations associated with the given id. It should return a 200 status with the configuration data if it exists, otherwise a 404 status if no active configurations are found.
+
+
+
+
+Make sure that the above tests are included in your test suite, and feel free to ask if you need any more assistance!
+
+
+
+
+
+import pytest
+from unittest.mock import patch, MagicMock
+from datetime import datetime, timedelta
+from app.models.model_designer import (
+    WhitelistStoreRequests, WhitelistStoreConfigRequests, WhitelistStoreRequestsApprovals
+)
+from app.resources.whitelists_maker import WhitelistMakerStatusResource, WhitelistMakerRequestIdResource, WhitelistMakerIdResource
+
+# Helper function to create mock data for WhitelistStoreRequests
+def create_mock_whitelist_request(request_id, status, created_by, approver_1=None, approver_2=None):
+    return WhitelistStoreRequests(
+        request_id=request_id,
+        count=1,
+        status=status,
+        created_by=created_by,
+        creator_email=f"{created_by}@example.com",
+        creator_name=f"{created_by.capitalize()} User",
+        req_created_date=datetime.utcnow(),
+        req_sent_date=datetime.utcnow() if status != "open" else None,
+        approver_action_date=datetime.utcnow() if status in ["approved", "rejected", "partially approved"] else None,
+        approver_1=approver_1,
+        approver_2=approver_2,
+        approver_1_email=f"{approver_1}@example.com" if approver_1 else None,
+        approver_2_email=f"{approver_2}@example.com" if approver_2 else None,
+        approver_1_name=f"{approver_1.capitalize()} Approver" if approver_1 else None,
+        approver_2_name=f"{approver_2.capitalize()} Approver" if approver_2 else None,
+        is_active=True,
+        comments="Test comment" if status != "open" else None
+    )
+
+# Helper function to create mock data for WhitelistStoreConfigRequests
+def create_mock_whitelist_config(id, request_id, workflow_name, url):
+    return WhitelistStoreConfigRequests(
+        id=id,
+        request_id=request_id,
+        workflow_id=id,
+        workflow_name=workflow_name,
+        workflow_url=url,
+        environment="Production",
+        is_active=True,
+        status_ar="active",
+        window_titles="Title1,Title2",
+        is_full_image_capture=True,
+        is_max_tab=True,
+        is_moved_to_main=False
+    )
+
+# Helper function to create mock data for WhitelistStoreRequestsApprovals
+def create_mock_whitelist_approval(id, request_id, approver_id):
+    return WhitelistStoreRequestsApprovals(
+        id=id,
+        request_id=request_id,
+        approver_id=approver_id,
+        approver_name=f"{approver_id.capitalize()} Approver",
+        approver_email=f"{approver_id}@example.com",
+        is_active=True
+    )
+
+# Generate 15 sets of dummy data
+dummy_data = [
+    # Open status - no approver details
+    (create_mock_whitelist_request(1, "open", "user1"), 
+     [create_mock_whitelist_config(1, 1, "Workflow1", "http://example1.com")], 
+     []),
+    
+    # Pending status - approver details in store requests, entry in approver table
+    (create_mock_whitelist_request(2, "pending", "user2", "approver1", "approver2"), 
+     [create_mock_whitelist_config(2, 2, "Workflow2", "http://example2.com")], 
+     [create_mock_whitelist_approval(1, 2, "approver1"), create_mock_whitelist_approval(2, 2, "approver2")]),
+    
+    # Approved status - all details updated
+    (create_mock_whitelist_request(3, "approved", "user3", "approver1", "approver2"), 
+     [create_mock_whitelist_config(3, 3, "Workflow3", "http://example3.com")], 
+     [create_mock_whitelist_approval(3, 3, "approver1"), create_mock_whitelist_approval(4, 3, "approver2")]),
+    
+    # Rejected status
+    (create_mock_whitelist_request(4, "rejected", "user4", "approver1"), 
+     [create_mock_whitelist_config(4, 4, "Workflow4", "http://example4.com")], 
+     [create_mock_whitelist_approval(5, 4, "approver1")]),
+    
+    # Partially approved status
+    (create_mock_whitelist_request(5, "partially approved", "user5", "approver1", "approver2"), 
+     [create_mock_whitelist_config(5, 5, "Workflow5", "http://example5.com")], 
+     [create_mock_whitelist_approval(6, 5, "approver1"), create_mock_whitelist_approval(7, 5, "approver2")]),
+    
+    # Open status with multiple configs
+    (create_mock_whitelist_request(6, "open", "user6"), 
+     [create_mock_whitelist_config(6, 6, "Workflow6a", "http://example6a.com"), 
+      create_mock_whitelist_config(7, 6, "Workflow6b", "http://example6b.com")], 
+     []),
+    
+    # Pending status with one approver
+    (create_mock_whitelist_request(7, "pending", "user7", "approver1"), 
+     [create_mock_whitelist_config(8, 7, "Workflow7", "http://example7.com")], 
+     [create_mock_whitelist_approval(8, 7, "approver1")]),
+    
+    # Approved status with one approver
+    (create_mock_whitelist_request(8, "approved", "user8", "approver1"), 
+     [create_mock_whitelist_config(9, 8, "Workflow8", "http://example8.com")], 
+     [create_mock_whitelist_approval(9, 8, "approver1")]),
+    
+    # Rejected status with two approvers
+    (create_mock_whitelist_request(9, "rejected", "user9", "approver1", "approver2"), 
+     [create_mock_whitelist_config(10, 9, "Workflow9", "http://example9.com")], 
+     [create_mock_whitelist_approval(10, 9, "approver1"), create_mock_whitelist_approval(11, 9, "approver2")]),
+    
+    # Partially approved status with multiple configs
+    (create_mock_whitelist_request(10, "partially approved", "user10", "approver1", "approver2"), 
+     [create_mock_whitelist_config(11, 10, "Workflow10a", "http://example10a.com"), 
+      create_mock_whitelist_config(12, 10, "Workflow10b", "http://example10b.com")], 
+     [create_mock_whitelist_approval(12, 10, "approver1"), create_mock_whitelist_approval(13, 10, "approver2")]),
+    
+    # Open status with inactive config
+    (create_mock_whitelist_request(11, "open", "user11"), 
+     [create_mock_whitelist_config(13, 11, "Workflow11", "http://example11.com")], 
+     []),
+    
+    # Pending status with inactive approval
+    (create_mock_whitelist_request(12, "pending", "user12", "approver1"), 
+     [create_mock_whitelist_config(14, 12, "Workflow12", "http://example12.com")], 
+     [create_mock_whitelist_approval(14, 12, "approver1")]),
+    
+    # Approved status with multiple configs, one inactive
+    (create_mock_whitelist_request(13, "approved", "user13", "approver1"), 
+     [create_mock_whitelist_config(15, 13, "Workflow13a", "http://example13a.com"), 
+      create_mock_whitelist_config(16, 13, "Workflow13b", "http://example13b.com")], 
+     [create_mock_whitelist_approval(15, 13, "approver1")]),
+    
+    # Rejected status with no configs
+    (create_mock_whitelist_request(14, "rejected", "user14", "approver1"), 
+     [], 
+     [create_mock_whitelist_approval(16, 14, "approver1")]),
+    
+    # Partially approved status with inactive request
+    (create_mock_whitelist_request(15, "partially approved", "user15", "approver1", "approver2"), 
+     [create_mock_whitelist_config(17, 15, "Workflow15", "http://example15.com")], 
+     [create_mock_whitelist_approval(17, 15, "approver1"), create_mock_whitelist_approval(18, 15, "approver2")])
+]
+
+# Update the dummy_data to set some entries as inactive
+dummy_data[10][0].is_active = False  # Set request 11 as inactive
+dummy_data[11][1][0].is_active = False  # Set config for request 12 as inactive
+dummy_data[12][2][0].is_active = False  # Set approval for request 13 as inactive
+dummy_data[14][0].is_active = False  # Set request 15 as inactive
+
+# Tests for WhitelistMakerStatusResource
+@pytest.mark.parametrize("status", ["pending", "approved", "rejected", "partially approved", "open"])
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_whitelist_maker_status_resource_get(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token, status):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Filter dummy data based on status
+    mock_requests = [req for req, _, _ in dummy_data if req.status == status and req.is_active]
+    mock_session.query.return_value.filter_by.return_value.all.return_value = mock_requests
+
+    if status == "pending":
+        mock_approvals = [approval for req, _, approvals in dummy_data for approval in approvals if req.status == "pending" and req.is_active and approval.is_active]
+        mock_session.query.return_value.filter_by.return_value.all.side_effect = [mock_requests, mock_approvals]
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get(f'/api/whitelists-maker/status/{status}', headers=headers)
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert len(data) == len(mock_requests)
+    assert all(item['status'] == status for item in data)
+
+    # Test edge case: No requests found
+    mock_session.query.return_value.filter_by.return_value.all.return_value = []
+    response = client.get(f'/api/whitelists-maker/status/{status}', headers=headers)
+    assert response.status_code == 200
+    assert response.get_json() == []
+
+# Tests for WhitelistMakerRequestIdResource
+@pytest.mark.parametrize("request_id", range(1, 16))
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_whitelist_maker_request_id_resource_get(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token, request_id):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Filter dummy data based on request_id
+    mock_configs = [config for _, configs, _ in dummy_data if configs and configs[0].request_id == request_id and configs[0].is_active]
+    mock_session.query.return_value.filter_by.return_value.all.return_value = mock_configs
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get(f'/api/whitelists-maker/request-id/{request_id}', headers=headers)
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert len(data) == len(mock_configs)
+    assert all(item['requestId'] == request_id for item in data)
+
+    # Test edge case: No configs found
+    if not mock_configs:
+        assert response.get_json() == []
+
+# Tests for WhitelistMakerIdResource PUT method
+@pytest.mark.parametrize("config_id", range(1, 18))
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_whitelist_maker_id_resource_put(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token, config_id):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Find the corresponding config in dummy data
+    mock_config = next((config for _, configs, _ in dummy_data for config in configs if config.id == config_id), None)
+    mock_session.query.return_value.get.return_value = mock_config
+
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "workflowName": "UpdatedWorkflow",
+        "url": "http://updated-example.com",
+        "environment": "Test",
+        "titles": "UpdatedTitle1,UpdatedTitle2",
+        "screenCapture": "no"
+    }
+    response = client.put(f'/api/whitelists-maker/request-id/id/{config_id}', json=payload, headers=headers)
+
+    if mock_config and mock_config.is_active:
+        assert response.status_code == 200
+        assert response.get_json()['message'] == 'Whitelist entry updated successfully'
+
+        # Verify the update
+        assert mock_config.workflow_name == "UpdatedWorkflow"
+        assert mock_config.workflow_url == "http://updated-example.com"
+        assert mock</antArtifact>
+
+# ... (previous code remains the same)
+
+# Tests for WhitelistMakerIdResource PUT method (continued)
+@pytest.mark.parametrize("config_id", range(1, 18))
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_whitelist_maker_id_resource_put(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token, config_id):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Find the corresponding config in dummy data
+    mock_config = next((config for _, configs, _ in dummy_data for config in configs if config.id == config_id), None)
+    mock_session.query.return_value.get.return_value = mock_config
+
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "workflowName": "UpdatedWorkflow",
+        "url": "http://updated-example.com",
+        "environment": "Test",
+        "titles": "UpdatedTitle1,UpdatedTitle2",
+        "screenCapture": "no"
+    }
+    response = client.put(f'/api/whitelists-maker/request-id/id/{config_id}', json=payload, headers=headers)
+
+    if mock_config and mock_config.is_active:
+        assert response.status_code == 200
+        assert response.get_json()['message'] == 'Whitelist entry updated successfully'
+
+        # Verify the update
+        assert mock_config.workflow_name == "UpdatedWorkflow"
+        assert mock_config.workflow_url == "http://updated-example.com"
+        assert mock_config.environment == "Test"
+        assert mock_config.window_titles == "UpdatedTitle1,UpdatedTitle2"
+        assert mock_config.is_full_image_capture == False
+    else:
+        assert response.status_code == 400
+        assert response.get_json()['message'] == 'Whitelist entry not found'
+
+# Tests for WhitelistMakerIdResource DELETE method
+@pytest.mark.parametrize("config_id", range(1, 18))
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_whitelist_maker_id_resource_delete(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token, config_id):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Find the corresponding config and request in dummy data
+    mock_config = next((config for _, configs, _ in dummy_data for config in configs if config.id == config_id), None)
+    mock_request = next((req for req, configs, _ in dummy_data if configs and configs[0].id == config_id), None)
+    
+    mock_session.query.return_value.get.return_value = mock_config
+    mock_session.query.return_value.filter_by.return_value.
+
+
+
 
 
 To write unit tests for the new models and endpoints, we'll mock the database interactions and simulate the behavior as done in your previous examples. Below is the updated testing code for the endpoints using the provided models.
