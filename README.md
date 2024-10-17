@@ -1,3 +1,91 @@
+
+
+def serialize_whitelist_request(request):
+    return {
+        "request_id": request.request_id,
+        "status": request.status,
+        "created_by": request.created_by,
+        "approver_1": request.approver_1,
+        "approver_2": request.approver_2,
+        "creator_email": request.creator_email,
+        "creator_name": request.creator_name,
+        "req_created_date": request.req_created_date.isoformat(),
+        "req_sent_date": request.req_sent_date.isoformat() if request.req_sent_date else None,
+        "approver_action_date": request.approver_action_date.isoformat() if request.approver_action_date else None,
+        "is_active": request.is_active,
+        "comments": request.comments
+    }
+
+def serialize_whitelist_approval(approval):
+    return {
+        "id": approval.id,
+        "request_id": approval.request_id,
+        "approver_id": approval.approver_id,
+        "approver_name": approval.approver_name,
+        "approver_email": approval.approver_email,
+        "is_active": approval.is_active
+    }
+
+# Example serialization in the test setup
+mock_requests_serialized = [serialize_whitelist_request(req) for req in mock_requests]
+
+
+
+
+
+
+
+
+@pytest.mark.parametrize("status", ["pending", "approved", "rejected", "partially approved", "open"])
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_whitelist_maker_status_resource_get(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token, status):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Filter dummy data based on status and active status
+    mock_requests = [req for req, _, _ in dummy_data if req.status == status and req.is_active]
+
+    # Serialize the filtered requests
+    mock_requests_serialized = [serialize_whitelist_request(req) for req in mock_requests]
+
+    # Simulate query results for WhitelistStoreRequests
+    mock_session.query.return_value.filter_by.return_value.all.return_value = mock_requests_serialized
+
+    if status == "pending":
+        # Filter and serialize approvals for pending requests
+        mock_approvals = [
+            approval for req, _, approvals in dummy_data 
+            for approval in approvals if req.status == "pending" and req.is_active and approval.is_active
+        ]
+        mock_approvals_serialized = [serialize_whitelist_approval(approval) for approval in mock_approvals]
+
+        # Use side_effect to return requests and approvals sequentially
+        mock_session.query.return_value.filter_by.return_value.all.side_effect = [
+            mock_requests_serialized,  # First call returns requests
+            mock_approvals_serialized  # Second call returns approvals
+        ]
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get(f'/api/whitelist-maker/status/{status}', headers=headers)
+
+    assert response.status_code == 200
+    # Optionally, add further assertions to validate the response content
+
+
+
+
+
+
+
+
+
+
+
 Here's the completion for your code, particularly for the WhitelistMakerRequestIdResource test and the addition of the WhitelistMakerIdResource tests.
 
 # Continuing the test for WhitelistMakerRequestIdResource
