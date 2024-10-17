@@ -1,5 +1,338 @@
 
 
+Certainly! Let's refactor your test code to properly handle all statuses and simulate database queries using your dummy data. We'll ensure that approvals are fetched and used when needed for each status.
+
+Understanding the Issue
+
+In your original test code, you're setting up the mock approvals only when the status is "pending", but your endpoint handler fetches approvals for other statuses as well (though in a different way). Specifically:
+
+For "pending" status, the endpoint queries the WhitelistStoreRequestsApprovals table to get approver details.
+
+For "approved", "rejected", and "partially approved" statuses, the approver details are taken directly from the WhitelistStoreRequests table.
+
+For "open" status, approvals are not fetched.
+
+
+Your test code needs to mimic this behavior by setting up mocks appropriately for each status.
+
+Refactored Test Code
+
+Here's the refactored test code:
+
+import pytest
+from unittest.mock import patch, MagicMock
+from datetime import datetime
+from app.models.model_designer import (
+    WhitelistStoreRequests, WhitelistStoreConfigRequests, WhitelistStoreRequestsApprovals
+)
+from app.resources.whitelists_maker import WhitelistMakerStatusResource
+
+# Helper function to create mock data (same as before)
+def create_mock_whitelist_request(request_id, status, created_by, approver_1=None, approver_2=None):
+    # ... (same as your helper function)
+    # Return a MagicMock object to simulate the ORM model
+    mock_request = MagicMock(spec=WhitelistStoreRequests)
+    mock_request.request_id = request_id
+    mock_request.count = 1
+    mock_request.status = status
+    mock_request.created_by = created_by
+    mock_request.creator_email = f"{created_by}@example.com"
+    mock_request.creator_name = f"{created_by.capitalize()} User"
+    mock_request.req_created_date = datetime.utcnow()
+    mock_request.req_sent_date = datetime.utcnow() if status != "open" else None
+    mock_request.approver_action_date = datetime.utcnow() if status in ["approved", "rejected", "partially approved"] else None
+    mock_request.approver_1 = approver_1
+    mock_request.approver_2 = approver_2
+    mock_request.approver_1_email = f"{approver_1}@example.com" if approver_1 else None
+    mock_request.approver_2_email = f"{approver_2}@example.com" if approver_2 else None
+    mock_request.approver_1_name = f"{approver_1.capitalize()} Approver" if approver_1 else None
+    mock_request.approver_2_name = f"{approver_2.capitalize()} Approver" if approver_2 else None
+    mock_request.is_active = True
+    mock_request.comments = "Test comment" if status != "open" else None
+    return mock_request
+
+def create_mock_whitelist_approval(id, request_id, approver_id):
+    # ... (same as your helper function)
+    mock_approval = MagicMock(spec=WhitelistStoreRequestsApprovals)
+    mock_approval.id = id
+    mock_approval.request_id = request_id
+    mock_approval.approver_id = approver_id
+    mock_approval.approver_name = f"{approver_id.capitalize()} Approver"
+    mock_approval.approver_email = f"{approver_id}@example.com"
+    mock_approval.is_active = True
+    return mock_approval
+
+# Generate dummy data (same as before)
+dummy_data = [
+    # ... (your dummy data setup)
+]
+
+# Update the dummy_data to set some entries as inactive (same as before)
+dummy_data[10][0].is_active = False  # Set request 11 as inactive
+dummy_data[11][1][0].is_active = False  # Set config for request 12 as inactive
+dummy_data[12][2][0].is_active = False  # Set approval for request 13 as inactive
+dummy_data[14][0].is_active = False  # Set request 15 as inactive
+
+# Refactored test function
+@pytest.mark.parametrize("status", ["pending", "approved", "rejected", "partially approved", "open"])
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+def test_whitelist_maker_status_resource_get(mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token, status):
+    # Mock JWT functions
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": "user1", "user_name": "Test User"}
+
+    user_id = mock_get_jwt.return_value["user_id"]
+
+    # Mock the session
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Prepare mock requests data
+    mock_requests = [req for req, _, _ in dummy_data if req.status == status and req.is_active and req.created_by == user_id]
+
+    # Prepare mock approvals data
+    approvals_by_request_id = {}
+    for req, _, approvals in dummy_data:
+        if req.created_by == user_id and req.is_active:
+            approvals_by_request_id[req.request_id] = [a for a in approvals if a.is_active]
+
+    # Mock session.query().filter_by().all() for WhitelistStoreRequests
+    def mock_filter_by_requests(**kwargs):
+        filtered_requests = []
+        for req in mock_requests:
+            match = True
+            for key, value in kwargs.items():
+                if getattr(req, key) != value:
+                    match = False
+                    break
+            if match:
+                filtered_requests.append(req)
+        filter_mock = MagicMock()
+        filter_mock.all.return_value = filtered_requests
+        return filter_mock
+
+    # Mock session.query().filter_by().all() for WhitelistStoreRequestsApprovals
+    def mock_filter_by_approvals(**kwargs):
+        request_id = kwargs.get('request_id')
+        is_active = kwargs.get('is_active', True)
+        approvals = approvals_by_request_id.get(request_id, [])
+        filter_mock = MagicMock()
+        filter_mock.all.return_value = approvals
+        return filter_mock
+
+    # Mock session.query()
+    def mock_query(model):
+        if model == WhitelistStoreRequests:
+            query_mock = MagicMock()
+            query_mock.filter_by.side_effect = mock_filter_by_requests
+            return query_mock
+        elif model == WhitelistStoreRequestsApprovals:
+            query_mock = MagicMock()
+            query_mock.filter_by.side_effect = mock_filter_by_approvals
+            return query_mock
+        else:
+            return MagicMock()
+
+    mock_session.query.side_effect = mock_query
+
+    # Perform the GET request
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get(f'/api/whitelists-maker/status/{status}', headers=headers)
+
+    # Assert the response
+    assert response.status_code == 200
+    data = response.get_json()
+    assert len(data) == len(mock_requests)
+
+    for item in data:
+        assert item['status'] == status
+        request_id = item['requestId']
+        if status == "pending":
+            # Approvals are fetched from the approvals table
+            expected_approvals = approvals_by_request_id.get(request_id, [])
+            assert len(item['approvers']) == len(expected_approvals)
+            for approver_data, expected_approval in zip(item['approvers'], expected_approvals):
+                assert approver_data['approverId'] == expected_approval.approver_id
+                assert approver_data['approverEmail'] == expected_approval.approver_email
+                assert approver_data['approverName'] == expected_approval.approver_name
+        else:
+            # Approvals are fetched from the request object
+            req = next(req for req in mock_requests if req.request_id == request_id)
+            assert len(item['approvers']) == 1
+            approver_data = item['approvers'][0]
+            assert approver_data['approverId'] == req.approver_1
+            assert approver_data['approverEmail'] == req.approver_1_email
+            assert approver_data['approverName'] == req.approver_1_name
+
+    # Edge case: No requests found
+    def mock_filter_by_empty(**kwargs):
+        filter_mock = MagicMock()
+        filter_mock.all.return_value = []
+        return filter_mock
+
+    def mock_query_empty(model):
+        query_mock = MagicMock()
+        query_mock.filter_by.side_effect = mock_filter_by_empty
+        return query_mock
+
+    mock_session.query.side_effect = mock_query_empty
+
+    response = client.get(f'/api/whitelists-maker/status/{status}', headers=headers)
+    assert response.status_code == 200
+    assert response.get_json() == []
+
+Explanation of Modifications
+
+1. Mocking the Session and Query Methods:
+
+We created a mock_session object and set its query method to have a side_effect that returns different mocks depending on the model being queried.
+
+For WhitelistStoreRequests, we mock the filter_by method to filter mock_requests based on the provided criteria.
+
+For WhitelistStoreRequestsApprovals, we mock the filter_by method to return approvals for a specific request_id.
+
+
+
+2. Handling Different Statuses:
+
+The test now handles all statuses in the parameterized test.
+
+For "pending" status, approvals are fetched from the approvals table, so we set up the mock_filter_by_approvals function accordingly.
+
+For other statuses, approver details are taken directly from the request object.
+
+
+
+3. Assertions:
+
+We added assertions to verify that the data returned by the endpoint matches the expected data from the dummy data.
+
+We check the length of approvers and compare each approver's details.
+
+
+
+4. Edge Case Handling:
+
+We added an edge case test where no requests are found.
+
+We mock the filter_by method to return an empty list to simulate this scenario.
+
+
+
+
+Walking Through the Refactored Test Code
+
+1. Mock JWT Functions:
+
+mock_get_jwt_identity.return_value = "test_user@example.com"
+mock_get_jwt.return_value = {"user_id": "user1", "user_name": "Test User"}
+
+We mock the JWT functions to return a specific user ID ("user1") that matches the created_by field in your dummy data.
+
+
+2. Prepare Mock Requests Data:
+
+mock_requests = [req for req, _, _ in dummy_data if req.status == status and req.is_active and req.created_by == user_id]
+
+We filter the dummy data to get requests that match the current status, are active, and were created by the mocked user.
+
+
+3. Prepare Mock Approvals Data:
+
+approvals_by_request_id = {}
+for req, _, approvals in dummy_data:
+    if req.created_by == user_id and req.is_active:
+        approvals_by_request_id[req.request_id] = [a for a in approvals if a.is_active]
+
+We build a dictionary mapping request_id to its approvals for easy lookup when mocking the approvals query.
+
+
+4. Mocking filter_by for Requests and Approvals:
+
+Requests:
+
+def mock_filter_by_requests(**kwargs):
+    # ... filters mock_requests based on kwargs
+
+This function simulates the filter_by method for WhitelistStoreRequests, returning the filtered list of requests.
+
+Approvals:
+
+def mock_filter_by_approvals(**kwargs):
+    # ... gets approvals based on request_id
+
+This function simulates the filter_by method for WhitelistStoreRequestsApprovals, returning the approvals for a given request_id.
+
+
+
+5. Mocking session.query:
+
+def mock_query(model):
+    if model == WhitelistStoreRequests:
+        # Returns mock for requests
+    elif model == WhitelistStoreRequestsApprovals:
+        # Returns mock for approvals
+
+We set the side_effect of mock_session.query to return the appropriate mock depending on the model being queried.
+
+
+6. Performing the GET Request:
+
+response = client.get(f'/api/whitelists-maker/status/{status}', headers=headers)
+
+We simulate a GET request to the endpoint with the current status.
+
+
+7. Assertions:
+
+We check that the response status code is 200.
+
+We verify that the number of items in the response matches the number of mock requests.
+
+For each item, we assert that the status matches.
+
+For "pending" status, we verify that the approvers come from the approvals table.
+
+For other statuses, we verify that the approvers come from the request object.
+
+
+
+8. Edge Case: No Requests Found:
+
+We mock the filter_by method to return an empty list to simulate no requests being found.
+
+We perform the GET request again and assert that the response is an empty list.
+
+
+
+
+Conclusion
+
+By refactoring the test code to handle all statuses and properly mocking the database queries, we ensure that the test accurately simulates the behavior of your endpoint. The key modifications involved:
+
+Setting up separate mocks for different models (WhitelistStoreRequests and WhitelistStoreRequestsApprovals).
+
+Using side effects to simulate filtering in the filter_by methods.
+
+Handling the logic for fetching approvers differently based on the status.
+
+Adding comprehensive assertions to validate the response data.
+
+
+This approach allows you to test your endpoint thoroughly without relying on an actual database, ensuring your code behaves as expected across all scenarios.
+
+
+
+
+
+
+
+
+
+--------------------------
+
 def serialize_whitelist_request(request):
     return {
         "request_id": request.request_id,
