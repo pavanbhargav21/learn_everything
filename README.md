@@ -1,3 +1,262 @@
+del
+
+
+import unittest
+from unittest.mock import patch, MagicMock
+from flask import json
+from myapp import app
+
+class TestWhitelistMakerIdResourceDelete(unittest.TestCase):
+    def setUp(self):
+        # Set up Flask test client
+        self.app = app.test_client()
+        self.app.testing = True
+
+        # Set up headers for authorization (mock JWT)
+        self.headers = {
+            'Authorization': 'Bearer test_token',
+            'Content-Type': 'application/json'
+        }
+
+    @patch('myapp.session_scope')
+    @patch('myapp.get_jwt_identity')
+    def test_delete_whitelist_entry_success(self, mock_jwt_identity, mock_session_scope):
+        """
+        Test deleting a whitelist entry successfully (marking as inactive).
+        """
+        # Mock the JWT identity
+        mock_jwt_identity.return_value = 'test_user'
+
+        # Mock the session
+        mock_session = MagicMock()
+        mock_session_scope.return_value.__enter__.return_value = mock_session
+
+        # Mock a whitelist entry
+        mock_whitelist_entry = MagicMock()
+        mock_whitelist_entry.request_id = 1
+        mock_session.query().get.return_value = mock_whitelist_entry
+
+        # Mock the count of active entries
+        mock_session.query().filter_by().count.return_value = 0
+
+        # Mock request entry
+        mock_request_entry = MagicMock()
+        mock_session.query().filter_by().first.return_value = mock_request_entry
+
+        # Perform DELETE request
+        response = self.app.delete('/request-id/id/1', headers=self.headers)
+
+        # Assert response status and message
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.data), {'message': 'Whitelist entry deleted successfully'})
+
+        # Assert the whitelist entry was marked as inactive
+        mock_whitelist_entry.is_active = False
+
+        # Assert that the main request entry was marked as inactive
+        mock_request_entry.is_active = False
+        mock_request_entry.count = 0
+
+    @patch('myapp.session_scope')
+    @patch('myapp.get_jwt_identity')
+    def test_delete_whitelist_entry_not_found(self, mock_jwt_identity, mock_session_scope):
+        """
+        Test deleting a whitelist entry that doesn't exist (should return 404).
+        """
+        # Mock the JWT identity
+        mock_jwt_identity.return_value = 'test_user'
+
+        # Mock the session
+        mock_session = MagicMock()
+        mock_session_scope.return_value.__enter__.return_value = mock_session
+
+        # Simulate whitelist entry not found
+        mock_session.query().get.return_value = None
+
+        # Perform DELETE request
+        response = self.app.delete('/request-id/id/1', headers=self.headers)
+
+        # Assert response status and message
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(json.loads(response.data), {'message': 'Whitelist entry not found'})
+
+    @patch('myapp.session_scope')
+    @patch('myapp.get_jwt_identity')
+    def test_delete_whitelist_entry_error(self, mock_jwt_identity, mock_session_scope):
+        """
+        Test deleting a whitelist entry when an error occurs.
+        """
+        # Mock the JWT identity
+        mock_jwt_identity.return_value = 'test_user'
+
+        # Mock the session and simulate an exception during deletion
+        mock_session_scope.side_effect = Exception('Test error')
+
+        # Perform DELETE request
+        response = self.app.delete('/request-id/id/1', headers=self.headers)
+
+        # Assert response status and message
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(json.loads(response.data), {'message': 'An error occurred', 'error': 'Test error'})
+
+if __name__ == '__main__':
+    unittest.main()
+
+
+put
+
+
+import pytest
+from unittest.mock import patch, MagicMock
+from app.models.model_designer import WhitelistStoreConfigRequests
+from app.resources.whitelists_maker import WhitelistMakerIdResource
+from datetime import datetime
+
+# Helper function to create mock whitelist entry
+def create_mock_whitelist(id, workflow_name, url, environment, titles, screen_capture):
+    mock_whitelist = MagicMock(spec=WhitelistStoreConfigRequests)
+    mock_whitelist.id = id
+    mock_whitelist.workflow_name = workflow_name
+    mock_whitelist.workflow_url = url
+    mock_whitelist.environment = environment
+    mock_whitelist.window_titles = titles
+    mock_whitelist.is_full_image_capture = screen_capture
+    mock_whitelist.modified_date = None
+    return mock_whitelist
+
+# Dummy whitelist data
+mock_whitelist_entry = create_mock_whitelist(
+    id=1,
+    workflow_name="Test Workflow",
+    url="https://example.com",
+    environment="Production",
+    titles="Title1,Title2",
+    screen_capture=True
+)
+
+@pytest.mark.parametrize("update_data, expected_message, expected_status", [
+    (
+        {
+            'workflowName': 'Updated Workflow',
+            'url': 'https://updated-url.com',
+            'environment': 'Development',
+            'titles': 'NewTitle1,NewTitle2',
+            'screenCapture': 'yes'
+        },
+        'Whitelist entry updated successfully',
+        200
+    ),
+    # Edge case: Invalid screenCapture input
+    (
+        {
+            'workflowName': 'Updated Workflow',
+            'url': 'https://updated-url.com',
+            'environment': 'Development',
+            'titles': 'NewTitle1,NewTitle2',
+            'screenCapture': 'no'
+        },
+        'Whitelist entry updated successfully',
+        200
+    )
+])
+@patch('app.resources.whitelists_maker.session_scope')
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+def test_whitelist_maker_id_resource_put(
+    mock_get_jwt_identity,
+    mock_session_scope,
+    client,
+    token,
+    update_data,
+    expected_message,
+    expected_status
+):
+    # Mock JWT identity
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+
+    # Mock session_scope
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mock session.query().get() to return the mock whitelist entry
+    mock_session.query.return_value.get.return_value = mock_whitelist_entry
+
+    # Perform the PUT request to update the whitelist entry
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.put(f'/api/whitelists-maker/{mock_whitelist_entry.id}', json=update_data, headers=headers)
+
+    # Assert the response
+    assert response.status_code == expected_status
+    assert response.get_json()['message'] == expected_message
+
+    # Verify that the whitelist entry was updated correctly
+    assert mock_whitelist_entry.workflow_name == update_data['workflowName']
+    assert mock_whitelist_entry.workflow_url == update_data['url']
+    assert mock_whitelist_entry.environment == update_data['environment']
+    assert mock_whitelist_entry.window_titles == update_data['titles']
+    assert mock_whitelist_entry.is_full_image_capture == (update_data['screenCapture'] == 'yes')
+    assert mock_whitelist_entry.modified_date is not None  # Ensure the modified date was updated
+
+# Edge case: Whitelist entry not found
+@patch('app.resources.whitelists_maker.session_scope')
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+def test_whitelist_maker_id_resource_put_entry_not_found(mock_get_jwt_identity, mock_session_scope, client, token):
+    # Mock JWT identity
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+
+    # Mock session_scope
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mock session.query().get() to return None (entry not found)
+    mock_session.query.return_value.get.return_value = None
+
+    # Perform the PUT request with a non-existent ID
+    update_data = {
+        'workflowName': 'Non-existent Workflow',
+        'url': 'https://non-existent-url.com',
+        'environment': 'Development',
+        'titles': 'NoTitle1,NoTitle2',
+        'screenCapture': 'yes'
+    }
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.put(f'/api/whitelists-maker/999', json=update_data, headers=headers)
+
+    # Assert the response
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Whitelist entry not found'
+
+# Edge case: Exception handling
+@patch('app.resources.whitelists_maker.session_scope')
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+def test_whitelist_maker_id_resource_put_exception(mock_get_jwt_identity, mock_session_scope, client, token):
+    # Mock JWT identity
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+
+    # Mock session_scope to raise an exception
+    mock_session_scope.side_effect = Exception("Database error")
+
+    # Perform the PUT request with data
+    update_data = {
+        'workflowName': 'Error Workflow',
+        'url': 'https://error-url.com',
+        'environment': 'Production',
+        'titles': 'ErrorTitle1,ErrorTitle2',
+        'screenCapture': 'yes'
+    }
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.put(f'/api/whitelists-maker/1', json=update_data, headers=headers)
+
+    # Assert the response
+    assert response.status_code == 500
+    assert response.get_json()['message'] == 'An error occurred'
+
+
+
+
+
+
+
+
 
 Code-1: 
 
