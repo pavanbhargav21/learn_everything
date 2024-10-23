@@ -1,3 +1,115 @@
+
+import pytest
+from unittest.mock import patch, MagicMock
+from app.models.model_designer import WhitelistStoreConfigRequests
+from app.resources.whitelists_maker import WhitelistMakerIdResource
+
+# Helper function to create mock whitelist entry
+def create_mock_whitelist(id, workflow_name, url, environment, titles, screen_capture):
+    mock_whitelist = MagicMock(spec=WhitelistStoreConfigRequests)
+    mock_whitelist.id = id
+    mock_whitelist.workflow_name = workflow_name
+    mock_whitelist.workflow_url = url
+    mock_whitelist.environment = environment
+    mock_whitelist.window_titles = titles
+    mock_whitelist.is_full_image_capture = screen_capture
+    mock_whitelist.modified_date = None
+    return mock_whitelist
+
+# Dummy whitelist data
+mock_whitelist_entry = create_mock_whitelist(
+    id=1,
+    workflow_name="Test Workflow",
+    url="https://example.com",
+    environment="Production",
+    titles="Title1,Title2",
+    screen_capture=True
+)
+
+@pytest.mark.parametrize("expected_message, expected_status", [
+    ('Whitelist entry deleted successfully', 200),
+])
+@patch('app.resources.whitelists_maker.session_scope')
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+def test_whitelist_maker_id_resource_delete(
+    mock_get_jwt_identity,
+    mock_session_scope,
+    client,
+    token,
+    expected_message,
+    expected_status
+):
+    # Mock JWT identity
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+
+    # Mock session_scope
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mock session.query().get() to return the mock whitelist entry
+    mock_session.query.return_value.get.return_value = mock_whitelist_entry
+
+    # Perform the DELETE request to delete the whitelist entry
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.delete(f'/api/whitelists-maker/{mock_whitelist_entry.id}', headers=headers)
+
+    # Assert the response
+    assert response.status_code == expected_status
+    assert response.get_json()['message'] == expected_message
+
+    # Verify that the whitelist entry was marked as inactive or deleted
+    mock_whitelist_entry.is_active = False
+
+# Edge case: Whitelist entry not found
+@patch('app.resources.whitelists_maker.session_scope')
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+def test_whitelist_maker_id_resource_delete_entry_not_found(mock_get_jwt_identity, mock_session_scope, client, token):
+    # Mock JWT identity
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+
+    # Mock session_scope
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mock session.query().get() to return None (entry not found)
+    mock_session.query.return_value.get.return_value = None
+
+    # Perform the DELETE request with a non-existent ID
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.delete(f'/api/whitelists-maker/999', headers=headers)
+
+    # Assert the response
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Whitelist entry not found'
+
+# Edge case: Exception handling
+@patch('app.resources.whitelists_maker.session_scope')
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+def test_whitelist_maker_id_resource_delete_exception(mock_get_jwt_identity, mock_session_scope, client, token):
+    # Mock JWT identity
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+
+    # Mock session_scope to raise an exception
+    mock_session_scope.side_effect = Exception("Database error")
+
+    # Perform the DELETE request
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.delete(f'/api/whitelists-maker/1', headers=headers)
+
+    # Assert the response
+    assert response.status_code == 500
+    assert response.get_json()['message'] == 'An error occurred'
+
+
+
+
+
+
+
+
+
+
+
 delete.
 
 import pytest
