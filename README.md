@@ -1,4 +1,106 @@
-del
+delete.
+
+import pytest
+from unittest.mock import patch, MagicMock
+from flask import json
+from myapp import app
+
+@pytest.fixture
+def client():
+    """Fixture to set up the Flask test client."""
+    with app.test_client() as client:
+        yield client
+
+@pytest.fixture
+def headers():
+    """Fixture for the headers with JWT token."""
+    return {
+        'Authorization': 'Bearer test_token',
+        'Content-Type': 'application/json'
+    }
+
+@patch('myapp.session_scope')
+@patch('myapp.get_jwt_identity')
+def test_delete_whitelist_entry_success(mock_jwt_identity, mock_session_scope, client, headers):
+    """
+    Test deleting a whitelist entry successfully (marking as inactive).
+    """
+    # Mock the JWT identity
+    mock_jwt_identity.return_value = 'test_user'
+
+    # Mock the session
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mock a whitelist entry
+    mock_whitelist_entry = MagicMock()
+    mock_whitelist_entry.request_id = 1
+    mock_session.query().get.return_value = mock_whitelist_entry
+
+    # Mock the count of active entries
+    mock_session.query().filter_by().count.return_value = 0
+
+    # Mock request entry
+    mock_request_entry = MagicMock()
+    mock_session.query().filter_by().first.return_value = mock_request_entry
+
+    # Perform DELETE request
+    response = client.delete('/request-id/id/1', headers=headers)
+
+    # Assert response status and message
+    assert response.status_code == 200
+    assert json.loads(response.data) == {'message': 'Whitelist entry deleted successfully'}
+
+    # Assert the whitelist entry was marked as inactive
+    mock_whitelist_entry.is_active = False
+
+    # Assert that the main request entry was marked as inactive
+    mock_request_entry.is_active = False
+    mock_request_entry.count = 0
+
+@patch('myapp.session_scope')
+@patch('myapp.get_jwt_identity')
+def test_delete_whitelist_entry_not_found(mock_jwt_identity, mock_session_scope, client, headers):
+    """
+    Test deleting a whitelist entry that doesn't exist (should return 404).
+    """
+    # Mock the JWT identity
+    mock_jwt_identity.return_value = 'test_user'
+
+    # Mock the session
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Simulate whitelist entry not found
+    mock_session.query().get.return_value = None
+
+    # Perform DELETE request
+    response = client.delete('/request-id/id/1', headers=headers)
+
+    # Assert response status and message
+    assert response.status_code == 404
+    assert json.loads(response.data) == {'message': 'Whitelist entry not found'}
+
+@patch('myapp.session_scope')
+@patch('myapp.get_jwt_identity')
+def test_delete_whitelist_entry_error(mock_jwt_identity, mock_session_scope, client, headers):
+    """
+    Test deleting a whitelist entry when an error occurs.
+    """
+    # Mock the JWT identity
+    mock_jwt_identity.return_value = 'test_user'
+
+    # Mock the session and simulate an exception during deletion
+    mock_session_scope.side_effect = Exception('Test error')
+
+    # Perform DELETE request
+    response = client.delete('/request-id/id/1', headers=headers)
+
+    # Assert response status and message
+    assert response.status_code == 500
+    assert json.loads(response.data) == {'message': 'An error occurred', 'error': 'Test error'}
+
+__________________________________
 
 
 import unittest
