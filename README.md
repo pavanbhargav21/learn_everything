@@ -1,15 +1,28 @@
 
+from unittest.mock import patch, MagicMock
+import pytest
+
 @patch('app.resources.whitelists_maker.get_jwt_identity')
 @patch('app.resources.whitelists_maker.get_jwt')
 @patch('app.resources.whitelists_maker.session_scope')
-@patch('validators.url')
-def test_post_whitelist_request(mock_validators_url, mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token):
+@patch('app.resources.whitelists_maker.check_whitelist_entry')
+@patch('app.resources.whitelists_maker.check_config_requests_entry')
+@patch('app.resources.whitelists_maker.check_whitelist_overlap')
+@patch('app.resources.whitelists_maker.check_config_requests_overlap')
+def test_post_whitelist_request(mock_check_config_requests_overlap, mock_check_whitelist_overlap,
+                                mock_check_config_requests_entry, mock_check_whitelist_entry,
+                                mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token):
     mock_get_jwt_identity.return_value = "test_user@example.com"
     mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
 
     mock_session = MagicMock()
-    mock_validators_url.return_value = True
     mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Ensure no existing whitelist entry, overlap, or config requests
+    mock_check_whitelist_entry.return_value = None
+    mock_check_config_requests_entry.return_value = None
+    mock_check_whitelist_overlap.return_value = set()
+    mock_check_config_requests_overlap.return_value = set()
 
     payload = {
         "workflow_name": "Test Workflow",
@@ -22,10 +35,9 @@ def test_post_whitelist_request(mock_validators_url, mock_session_scope, mock_ge
     headers = {"Authorization": f"Bearer {token}"}
     response = client.post('/api/whitelists-maker', json=payload, headers=headers)
 
+    # Assert that the request was successfully processed
     assert response.status_code == 201
     assert response.get_json()['message'] == 'Whitelist request created successfully'
-
-
 
 
 -------------
