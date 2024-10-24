@@ -1,4 +1,36 @@
 
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+@patch('validators.url')
+def test_post_whitelist_request(mock_validators_url, mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token):
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    mock_session = MagicMock()
+    mock_validators_url.return_value = True
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    payload = {
+        "workflow_name": "Test Workflow",
+        "url": "https://example.com",
+        "titles": "Title 1, Title 2",
+        "environment": "prod",
+        "screenCapture": "yes"
+    }
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post('/api/whitelists-maker', json=payload, headers=headers)
+
+    assert response.status_code == 201
+    assert response.get_json()['message'] == 'Whitelist request created successfully'
+
+
+
+
+-------------
+
+
 import pytest
 from io import BytesIO
 from unittest.mock import patch
