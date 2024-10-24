@@ -1,4 +1,43 @@
 
+import pytest
+from io import BytesIO
+from unittest.mock import patch
+import pandas as pd
+
+def test_upload_file_success(client):
+    # Prepare the mock Excel file with the correct structure (empty data)
+    data = {
+        'APP_STORE': pd.DataFrame(columns=['WorkflowName', 'WorkflowUrl', 'Environment', 'FullScreenCapture', 'WindowTitles']),
+        'KEY_STORE': pd.DataFrame(columns=['BusinessLevel', 'DeliveryService', 'ProcessName', 'WorkflowName', 'UniqueKey', 'KeyName', 'Layout', 'Remarks']),
+        'VOLUME_STORE': pd.DataFrame(columns=['BusinessLevel', 'DeliveryService', 'ProcessName', 'WorkflowName', 'Pattern', 'KeyName', 'KeyType', 'Layout', 'VolumeType', 'Value', 'FieldName', 'FieldLayout', 'Status'])
+    }
+
+    # Create an in-memory Excel file
+    excel_file = BytesIO()
+    with pd.ExcelWriter(excel_file, engine='xlsxwriter') as writer:
+        for sheet, df in data.items():
+            df.to_excel(writer, sheet_name=sheet, index=False)
+    excel_file.seek(0)  # Reset file pointer to the start
+
+    # Mock the session_scope and processAppStore, processKeyStore, processVolumeStore to prevent actual processing
+    with patch('app.resources.uploadmaker.session_scope', return_value=MagicMock()), \
+         patch('app.resources.uploadmaker.processAppStore', return_value=[]), \
+         patch('app.resources.uploadmaker.processKeyStore', return_value=[]), \
+         patch('app.resources.uploadmaker.processVolumeStore', return_value=[]):
+
+        # Send a POST request with the mock Excel file
+        response = client.post(
+            '/api/uploadmaker',
+            data={'file': (excel_file, 'test.xlsx')},
+            content_type='multipart/form-data'
+        )
+
+    # Verify that the response status is correct and no errors are thrown
+    assert response.status_code == 201
+    assert 'File processed and data added successfully' in response.get_json()['message']
+
+
+
 import unittest
 from unittest.mock import patch
 from flask import jsonify
