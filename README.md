@@ -1,4 +1,356 @@
 
+import unittest
+from unittest.mock import patch
+from flask import jsonify
+from app import create_app
+from models import WhitelistStoreRequests, WhitelistStoreConfigRequests
+from datetime import datetime
+
+class TestDeleteWhitelistRequest(unittest.TestCase):
+
+    def setUp(self):
+        """
+        Set up the Flask test client and test environment.
+        """
+        self.app = create_app('testing')
+        self.client = self.app.test_client()
+        self.headers = {
+            'Authorization': 'Bearer <your_valid_token_here>'
+        }
+
+    @patch('your_module.get_jwt')
+    @patch('your_module.session_scope')
+    def test_delete_whitelist_request_success(self, mock_session_scope, mock_get_jwt):
+        """
+        Test the successful deletion of a whitelist request.
+        """
+        mock_get_jwt.return_value = {'user_id': 123}
+        mock_session = mock_session_scope.return_value.__enter__.return_value
+
+        mock_session.query(WhitelistStoreRequests).filter_by.return_value.first.return_value = WhitelistStoreRequests(
+            request_id=1, created_by=123, is_active=True)
+
+        response = self.client.delete('/api/whitelist', json={
+            'request_id': 1
+        }, headers=self.headers)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {'message': 'Whitelist request deleted successfully'})
+
+    @patch('your_module.get_jwt')
+    def test_delete_whitelist_request_missing_request_id(self, mock_get_jwt):
+        """
+        Test the case where the request ID is not provided.
+        """
+        mock_get_jwt.return_value = {'user_id': 123}
+
+        response = self.client.delete('/api/whitelist', json={}, headers=self.headers)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json, {'message': 'Request ID is required'})
+
+    @patch('your_module.get_jwt')
+    @patch('your_module.session_scope')
+    def test_delete_whitelist_request_not_found(self, mock_session_scope, mock_get_jwt):
+        """
+        Test the case where no active whitelist request is found for the given request ID.
+        """
+        mock_get_jwt.return_value = {'user_id': 123}
+        mock_session = mock_session_scope.return_value.__enter__.return_value
+
+        mock_session.query(WhitelistStoreRequests).filter_by.return_value.first.return_value = None
+
+        response = self.client.delete('/api/whitelist', json={
+            'request_id': 999
+        }, headers=self.headers)
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json, {'message': 'No active whitelist request found for the given request ID'})
+
+    @patch('your_module.get_jwt')
+    @patch('your_module.session_scope')
+    def test_delete_whitelist_request_database_error(self, mock_session_scope, mock_get_jwt):
+        """
+        Test a database error during whitelist request deletion.
+        """
+        mock_get_jwt.return_value = {'user_id': 123}
+        mock_session_scope.side_effect = Exception('Database error occurred')
+
+        response = self.client.delete('/api/whitelist', json={
+            'request_id': 1
+        }, headers=self.headers)
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json, {'status': 'error', 'message': 'Database error occurred'})
+
+if __name__ == '__main__':
+    unittest.main()
+
+------------
+put
+
+import pytest
+from flask import jsonify
+from unittest.mock import patch
+from your_application import app
+
+# Sample test data for PUT
+valid_put_data = {
+    "requestIds": [1, 2, 3],
+    "approverInfo": [
+        {"approver_id": 101, "name": "Approver One"},
+        {"approver_id": 102, "name": "Approver Two"}
+    ]
+}
+
+invalid_put_data_no_request_ids = {
+    "requestIds": [],
+    "approverInfo": [
+        {"approver_id": 101, "name": "Approver One"}
+    ]
+}
+
+invalid_put_data_no_approvers = {
+    "requestIds": [1, 2],
+    "approverInfo": []
+}
+
+@pytest.fixture
+def client():
+    app.config['TESTING'] = True
+    with app.test_client() as client:
+        yield client
+
+# Mock the JWT functions
+@patch("your_application.routes.get_jwt_identity", return_value="test@example.com")
+@patch("your_application.routes.get_jwt", return_value={"user_id": 1, "user_name": "Test User"})
+def test_put_successful_update(mock_jwt_identity, mock_jwt, client):
+    response = client.put('/your_endpoint', json=valid_put_data)
+    assert response.status_code == 200
+    assert b"Request status updated successfully" in response.data
+
+@patch("your_application.routes.get_jwt_identity", return_value="test@example.com")
+@patch("your_application.routes.get_jwt", return_value={"user_id": 1, "user_name": "Test User"})
+def test_put_no_request_ids(mock_jwt_identity, mock_jwt, client):
+    response = client.put('/your_endpoint', json=invalid_put_data_no_request_ids)
+    assert response.status_code == 400
+    assert b"No Request IDs provided" in response.data
+
+@patch("your_application.routes.get_jwt_identity", return_value="test@example.com")
+@patch("your_application.routes.get_jwt", return_value={"user_id": 1, "user_name": "Test User"})
+def test_put_no_approvers(mock_jwt_identity, mock_jwt, client):
+    response = client.put('/your_endpoint', json=invalid_put_data_no_approvers)
+    assert response.status_code == 400
+    assert b"No approvers provided" in response.data
+
+
+
+
+
+-----&-&&&&
+post 1
+
+import pytest
+from flask import jsonify
+from unittest.mock import patch
+from your_application import app
+
+# Sample test data
+valid_post_data = {
+    "workflow_name": "Test Workflow",
+    "url": "https://valid.url",
+    "titles": "Title1,Title2",
+    "environment": "Test",
+    "screenCapture": "yes"
+}
+
+invalid_url_data = {
+    "workflow_name": "Test Workflow",
+    "url": "invalid-url",
+    "titles": "Title1,Title2",
+    "environment": "Test",
+}
+
+invalid_titles_data = {
+    "workflow_name": "Test Workflow",
+    "url": "https://valid.url",
+    "titles": "Title1",
+    "environment": "Test",
+}
+
+@pytest.fixture
+def client():
+    app.config['TESTING'] = True
+    with app.test_client() as client:
+        yield client
+
+# Mock the JWT functions
+@patch("your_application.routes.get_jwt_identity", return_value="test@example.com")
+@patch("your_application.routes.get_jwt", return_value={"user_id": 1, "user_name": "Test User"})
+def test_post_successful_creation(mock_jwt_identity, mock_jwt, client):
+    response = client.post('/your_endpoint', json=valid_post_data)
+    assert response.status_code == 201
+    assert b"Whitelist request created successfully" in response.data
+
+@patch("your_application.routes.get_jwt_identity", return_value="test@example.com")
+@patch("your_application.routes.get_jwt", return_value={"user_id": 1, "user_name": "Test User"})
+def test_post_invalid_url(mock_jwt_identity, mock_jwt, client):
+    response = client.post('/your_endpoint', json=invalid_url_data)
+    assert response.status_code == 400
+    assert b"Invalid URL" in response.data
+
+@patch("your_application.routes.get_jwt_identity", return_value="test@example.com")
+@patch("your_application.routes.get_jwt", return_value={"user_id": 1, "user_name": "Test User"})
+def test_post_invalid_titles(mock_jwt_identity, mock_jwt, client):
+    response = client.post('/your_endpoint', json=invalid_titles_data)
+    assert response.status_code == 400
+    assert b"At least two page titles are required" in response.data
+
+
+
+
+--------
+
+
+import pytest
+from flask import Flask, jsonify
+from flask_jwt_extended import create_access_token
+from unittest.mock import patch, MagicMock
+import os
+from io import BytesIO
+
+# Assuming you have a factory to create the app
+from app import create_app
+from app.resources.uploadmaker import UploadMakerResource
+
+@pytest.fixture
+def client():
+    # Create a test client
+    app = create_app(testing=True)  # Assume you have a testing flag in your app factory
+    with app.test_client() as client:
+        yield client
+
+@pytest.fixture
+def access_token():
+    # Create a mock access token for testing
+    with patch('flask_jwt_extended.create_access_token') as mock_token:
+        yield mock_token.return_value
+
+# Mocking helper functions such as `allowed_file`, `session_scope`, etc.
+@patch('app.resources.uploadmaker.allowed_file', return_value=True)
+@patch('app.resources.uploadmaker.session_scope')
+@patch('pandas.read_excel')
+def test_upload_file_success(mock_read_excel, mock_session_scope, mock_allowed_file, client, access_token):
+    # Prepare mock data for Excel sheets
+    mock_app_store_data = MagicMock()
+    mock_key_store_data = MagicMock()
+    mock_volume_store_data = MagicMock()
+    
+    # Mock `read_excel` to return the above data
+    mock_read_excel.side_effect = [mock_app_store_data, mock_key_store_data, mock_volume_store_data]
+
+    # Mock session context manager
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Prepare a mock file
+    data = {
+        'file': (BytesIO(b"fake file data"), 'test.xlsx')
+    }
+    
+    # Generate a JWT token for authentication
+    headers = {
+        'Authorization': f'Bearer {create_access_token(identity="testuser")}'
+    }
+
+    # Call the POST method with the file
+    response = client.post('/api/uploadmaker', data=data, headers=headers, content_type='multipart/form-data')
+
+    # Assert that the status code is 201 (success)
+    assert response.status_code == 201
+    assert response.json['message'] == 'File processed and data added successfully'
+
+    # Additional checks, such as ensuring session was committed, etc.
+    mock_session.add.assert_called()
+    mock_session.flush.assert_called()
+
+@patch('app.resources.uploadmaker.allowed_file', return_value=False)
+def test_invalid_file_format(mock_allowed_file, client, access_token):
+    # Prepare a mock file with an invalid format
+    data = {
+        'file': (BytesIO(b"fake file data"), 'test.txt')
+    }
+    
+    # Generate a JWT token for authentication
+    headers = {
+        'Authorization': f'Bearer {create_access_token(identity="testuser")}'
+    }
+
+    # Call the POST method with an invalid file format
+    response = client.post('/api/uploadmaker', data=data, headers=headers, content_type='multipart/form-data')
+
+    # Assert that the status code is 400 (bad request)
+    assert response.status_code == 400
+    assert response.json['message'] == 'Invalid file format'
+
+def test_missing_file(client, access_token):
+    # Call the POST method without a file
+    headers = {
+        'Authorization': f'Bearer {create_access_token(identity="testuser")}'
+    }
+
+    response = client.post('/api/uploadmaker', headers=headers)
+
+    # Assert that the status code is 400 and the correct message is returned
+    assert response.status_code == 400
+    assert response.json['message'] == 'No file part in the request'
+
+@patch('app.resources.uploadmaker.allowed_file', return_value=True)
+def test_no_file_selected(mock_allowed_file, client, access_token):
+    # Prepare an empty file part (filename is empty)
+    data = {
+        'file': (BytesIO(b""), '')
+    }
+
+    # Generate a JWT token for authentication
+    headers = {
+        'Authorization': f'Bearer {create_access_token(identity="testuser")}'
+    }
+
+    # Call the POST method with no selected file
+    response = client.post('/api/uploadmaker', data=data, headers=headers, content_type='multipart/form-data')
+
+    # Assert that the status code is 400 and the correct message is returned
+    assert response.status_code == 400
+    assert response.json['message'] == 'No selected file'
+
+@patch('app.resources.uploadmaker.session_scope')
+def test_database_integrity_error(mock_session_scope, client, access_token):
+    # Mock session to raise IntegrityError during the commit
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+    mock_session.add.side_effect = IntegrityError("mocked integrity error", None, None)
+
+    # Prepare a valid file
+    data = {
+        'file': (BytesIO(b"fake file data"), 'test.xlsx')
+    }
+
+    # Generate a JWT token for authentication
+    headers = {
+        'Authorization': f'Bearer {create_access_token(identity="testuser")}'
+    }
+
+    # Call the POST method
+    response = client.post('/api/uploadmaker', data=data, headers=headers, content_type='multipart/form-data')
+
+    # Assert that the status code is 500 (internal server error) due to IntegrityError
+    assert response.status_code == 500
+    assert 'Database Integrity Error' in response.json['message']
+
+
+
+-------
 import pytest
 from unittest.mock import patch, MagicMock
 from app.models.model_designer import WhitelistStoreConfigRequests
