@@ -1,6 +1,69 @@
 
 from unittest.mock import patch, MagicMock
 import pytest
+from concurrent.futures import Future
+
+@patch('app.resources.whitelists_maker.get_jwt_identity')
+@patch('app.resources.whitelists_maker.get_jwt')
+@patch('app.resources.whitelists_maker.session_scope')
+@patch('app.resources.whitelists_maker.ThreadPoolExecutor')
+def test_post_whitelist_request(mock_thread_pool, mock_session_scope, mock_get_jwt, mock_get_jwt_identity, client, token):
+    # Mocking the get_jwt_identity and get_jwt methods
+    mock_get_jwt_identity.return_value = "test_user@example.com"
+    mock_get_jwt.return_value = {"user_id": 1, "user_name": "Test User"}
+
+    # Mocking session scope
+    mock_session = MagicMock()
+    mock_session_scope.return_value.__enter__.return_value = mock_session
+
+    # Mocking ThreadPoolExecutor and future results for all helper functions
+    mock_future_whitelist = Future()
+    mock_future_whitelist.set_result(None)  # Simulate no whitelist entry conflict
+
+    mock_future_config_requests = Future()
+    mock_future_config_requests.set_result(None)  # Simulate no config requests conflict
+
+    mock_future_whitelist_overlap = Future()
+    mock_future_whitelist_overlap.set_result(set())  # Simulate no whitelist overlap
+
+    mock_future_config_requests_overlap = Future()
+    mock_future_config_requests_overlap.set_result(set())  # Simulate no config requests overlap
+
+    # Mock the executor to return the futures
+    mock_executor_instance = MagicMock()
+    mock_executor_instance.submit.side_effect = [
+        mock_future_whitelist, mock_future_config_requests,
+        mock_future_whitelist_overlap, mock_future_config_requests_overlap
+    ]
+    mock_thread_pool.return_value.__enter__.return_value = mock_executor_instance
+
+    # Payload for the POST request
+    payload = {
+        "workflow_name": "Test Workflow",
+        "url": "https://example.com",
+        "titles": "Title 1, Title 2",
+        "environment": "prod",
+        "screenCapture": "yes"
+    }
+
+    # Sending the POST request
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post('/api/whitelists-maker', json=payload, headers=headers)
+
+    # Asserting the response
+    assert response.status_code == 201
+    assert response.get_json()['message'] == 'Whitelist request created successfully'
+
+
+
+
+
+
+
+
+
+from unittest.mock import patch, MagicMock
+import pytest
 
 @patch('app.resources.whitelists_maker.get_jwt_identity')
 @patch('app.resources.whitelists_maker.get_jwt')
