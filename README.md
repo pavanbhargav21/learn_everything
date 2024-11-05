@@ -1,3 +1,99 @@
+class UploadMakerResource(Resource):
+    @jwt_required()
+    @cross_origin()
+    def post(self):
+        session = None
+        try:
+            user_email = get_jwt_identity()
+            claims = get_jwt()
+            user_id = claims.get("user_id")
+            user_name = claims.get("user_name").title()
+            
+            # Check if 'file' is part of request
+            if 'file' not in request.files:
+                return jsonify({'message': 'No file part in the request'}), 400
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({'message': 'No selected file'}), 400
+            
+            # Validate file extension and content
+            if not allowed_file(file.filename):
+                return jsonify({'message': 'Invalid file extension. Only .xlsx files are allowed.'}), 400
+            
+            file_content_error = validate_file_content(file)
+            if file_content_error:
+                return jsonify({'message': file_content_error}), 400
+
+            # Secure and save file
+            filename = secure_filename(file.filename)
+            file_path = os.path.join('/tmp', filename)
+            file.save(file_path)
+
+            # Load Excel sheets and validate columns
+            excel_data = pd.ExcelFile(file_path)
+            app_store_data = pd.read_excel(excel_data, sheet_name='APP_STORE', header=1, usecols=app_store_columns)
+            key_store_data = pd.read_excel(excel_data, sheet_name='KEY_STORE', header=1, usecols=key_store_columns)
+            volume_store_data = pd.read_excel(excel_data, sheet_name='VOLUME_STORE', header=1, usecols=volume_store_columns)
+            
+            # Validate sheet columns
+            validation_error = self.validate_columns(app_store_data, key_store_data, volume_store_data)
+            if validation_error:
+                return jsonify({'message': validation_error}), 400
+
+            # Process data using concurrent threads
+            with ThreadPoolExecutor() as executor:
+                with session_scope('DESIGNER') as session:
+                    business_function_dict, delivery_function_dict, process_function_dict, workflow_dict = self.get_all_ids(session)
+                    
+                    # Define query functions within the context manager
+                    def query_whitelist_store():
+                        return session.query(WhitelistStoreConfigRequests).filter(WhitelistStoreConfigRequests.is_active == True).all()
+
+                    def query_keyname_store():
+                        return session.query(KeynameStoreConfigRequests).filter(KeynameStoreConfigRequests.is_active == True).all()
+
+                    def query_volume_store():
+                        return session.query(VolumeStoreConfigRequests).filter(VolumeStoreConfigRequests.is_active == True).all()
+
+                    def query_whitelist():
+                        return session.query(Whitelist).filter(Whitelist.is_active == True).all()
+
+                    def query_keyname_mapping():
+                        return session.query(KeyNameMapping).filter(KeyNameMapping.is_active == True).all()
+
+                    def query_volume_matrix():
+                        return session.query(VolumeMatrix).filter(VolumeMatrix.is_active == True).all()
+
+                    # Submit the functions to the executor without arguments
+                    future_results = {
+                        'whitelist_store': executor.submit(query_whitelist_store),
+                        'keyname_store': executor.submit(query_keyname_store),
+                        'volume_store': executor.submit(query_volume_store),
+                        'whitelist': executor.submit(query_whitelist),
+                        'keyname_mapping': executor.submit(query_keyname_mapping),
+                        'volume_matrix': executor.submit(query_volume_matrix),
+                    }
+
+                    query_results = {key: future.result() for key, future in future_results.items()}
+
+                    whitelist_store_set = set((wsc.workflow_id, wsc.workflow_url, wsc.environment, wsc.window_titles) for wsc in query_results['whitelist_store'])
+                    keyname_store_set = set((knsc.workflow_id, knsc.activity_key_name) for knsc in query_results['keyname_store'])
+                    volume_store_set = set((vsc.workflow_id, vsc.pattern, vsc.activity_key_name) for vsc in query_results['volume_store'])
+                    whitelist_set = set((w.workflow_id, w.workflow_url, w.environment, w.window_titles) for w in query_results['whitelist'])
+                    keyname_mapping_set = set((kn.workflow_id, kn.activity_key_name) for kn in query_results['keyname_mapping'])
+                    volume_matrix_set = set((vm.workflow_id, vm.pattern, vm.activity_key_name) for vm in query_results['volume_matrix'])
+
+            return jsonify({'message': 'File processed successfully'}), 200
+
+        except ValueError as e:
+            return jsonify({'message': f'Error reading Excel file: {str(e)}'}), 400
+        except Exception as e:
+            return jsonify({'message': f'An error occurred: {str(e)}'}), 500
+
+
+
+
+-----6666666
 
 
 
