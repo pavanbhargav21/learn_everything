@@ -1,3 +1,185 @@
+
+key-1
+
+def process_key_store(self, key_store_data, workflow_dict, keyname_store_set, keyname_mapping_set,
+                     business_function_dict, delivery_function_dict, process_function_dict, session, user_id, user_name, user_email):
+    key_store_entries = key_store_data.to_dict(orient='records')
+    key_store_request_id = None
+    seen_keynames = set()
+    serial_number = 1
+    unique_key_groups = {}  # Track groups that have a unique entry
+
+    for entry in key_store_entries:
+        workflow_name = entry['WorkflowName']
+        workflow_id = workflow_dict.get(workflow_name)
+
+        if workflow_id is None:
+            return jsonify({'message': f'Workflow "{workflow_name}" does not exist in KEY_STORE sheet'}), 400
+
+        key_name = entry['KeyName']
+        if key_name in seen_keynames:
+            return jsonify({'message': f'Duplicate KeyName "{key_name}" in KEY_STORE sheet'}), 400
+
+        seen_keynames.add(key_name)
+
+        # Ensure there are no duplicates within the same request
+        business_level = entry['BusinessLevel']
+        delivery_service = entry['DeliveryService']
+        process_name = entry['ProcessName']
+        unique_key = entry['UniqueKey'] == 'Yes'
+
+        # Identify the group based on BusinessLevel, DeliveryService, ProcessName, WorkflowName
+        group_key = (business_level, delivery_service, process_name, workflow_name)
+
+        if unique_key:
+            # Check within the current request
+            if group_key in unique_key_groups:
+                return jsonify({
+                    'message': f'Multiple "is_unique" entries found for the combination of '
+                               f'BusinessLevel "{business_level}", DeliveryService "{delivery_service}", '
+                               f'ProcessName "{process_name}", WorkflowName "{workflow_name}"'
+                }), 400
+            unique_key_groups[group_key] = True
+
+            # Check in the database for existing unique entry
+            existing_unique = session.query(KeynameStoreConfigRequests).filter(
+                KeynameStoreConfigRequests.workflow_id == workflow_id,
+                KeynameStoreConfigRequests.business_level_id == business_function_dict.get(business_level),
+                KeynameStoreConfigRequests.delivery_service_id == delivery_function_dict.get(delivery_service),
+                KeynameStoreConfigRequests.process_name_id == process_function_dict.get(process_name),
+                KeynameStoreConfigRequests.is_unique == True,
+                KeynameStoreConfigRequests.is_active == True
+            ).first()
+
+            if existing_unique:
+                return jsonify({
+                    'message': f'A unique "is_unique" entry already exists in the database for the combination of '
+                               f'BusinessLevel "{business_level}", DeliveryService "{delivery_service}", '
+                               f'ProcessName "{process_name}", WorkflowName "{workflow_name}"'
+                }), 400
+
+        if not key_store_request_id:
+            new_request = KeynameStoreRequests(
+                count=len(key_store_entries),
+                req_created_date=datetime.utcnow(),
+                modified_date=datetime.utcnow(),
+                created_by=user_id,
+                creator_name=user_name,
+                creator_email=user_email,
+                is_active=True,
+                status="open",
+            )
+            session.add(new_request)
+            session.flush()
+            key_store_request_id = new_request.request_id
+
+        new_keyname_config = KeynameStoreConfigRequests(
+            request_id=key_store_request_id,
+            workflow_id=workflow_id,
+            serial_number=serial_number,
+            business_level_id=business_function_dict.get(business_level),
+            delivery_service_id=delivery_function_dict.get(delivery_service),
+            process_name_id=process_function_dict.get(process_name),
+            activity_key_name=key_name,
+            activity_key_layout=entry['Layout'],
+            is_unique=unique_key,
+            remarks=str(entry['Remarks']),
+            is_active=True,
+            status_ar='open'
+        )
+        session.add(new_keyname_config)
+        serial_number += 1   
+
+    return None
+
+
+
+
+key-2 initial 
+
+def process_key_store(self, key_store_data, workflow_dict, keyname_store_set, keyname_mapping_set,
+    business_function_dict, delivery_function_dict, process_function_dict, session, user_id, user_name, user_email):
+    
+    key_store_entries = key_store_data.to_dict(orient='records')
+    key_store_request_id = None
+    seen_keynames = set()
+    serial_number = 1
+
+    # Dictionary to track unique entries per group
+    unique_check = {}
+
+    for entry in key_store_entries:
+        workflow_name = entry['WorkflowName']
+        workflow_id = workflow_dict.get(workflow_name)
+
+        if workflow_id is None:
+            return jsonify({'message': f'Workflow "{workflow_name}" does not exist in KEY_STORE sheet'}), 400
+
+        key_name = entry['KeyName']
+        if key_name in seen_keynames:
+            return jsonify({'message': f'Duplicate KeyName "{key_name}" in KEY_STORE sheet'}), 400
+
+        seen_keynames.add(key_name)
+
+        # Grouping parameters
+        group_key = (entry['BusinessLevel'], entry['DeliveryService'], entry['ProcessName'])
+
+        # Initialize the unique check for each group if not already done
+        if group_key not in unique_check:
+            unique_check[group_key] = {'unique_count': 0}
+
+        # Increment unique count if `is_unique` is set to "Yes"
+        if entry['UniqueKey'] == 'Yes':
+            unique_check[group_key]['unique_count'] += 1
+
+        # Check if there is more than one unique entry per group
+        if unique_check[group_key]['unique_count'] > 1:
+            return jsonify({'message': f'Multiple "Yes" values for is_unique in group {group_key} in KEY_STORE sheet'}), 400
+
+        if (workflow_id, key_name) in keyname_store_set or (workflow_id, key_name) in keyname_mapping_set:
+            return jsonify({'message': f'Duplicate KeyName "{key_name}" for Workflow "{workflow_name}" in KEY_STORE'}), 400
+
+        if not key_store_request_id:
+            new_request = KeynameStoreRequests(
+                count=len(key_store_entries),
+                req_created_date=datetime.utcnow(),
+                modified_date=datetime.utcnow(),
+                created_by=user_id,
+                creator_name=user_name,
+                creator_email=user_email,
+                is_active=True,
+                status="open",
+            )
+            session.add(new_request)
+            session.flush()
+            key_store_request_id = new_request.request_id
+
+        new_keyname_config = KeynameStoreConfigRequests(
+            request_id=key_store_request_id,
+            workflow_id=workflow_id,
+            serial_number=serial_number,
+            business_level_id=business_function_dict.get(entry['BusinessLevel']),
+            delivery_service_id=delivery_function_dict.get(entry['DeliveryService']),
+            process_name_id=process_function_dict.get(entry['ProcessName']),
+            activity_key_name=key_name,
+            activity_key_layout=entry['Layout'],
+            is_unique=entry['UniqueKey'] == 'Yes',
+            remarks=str(entry['Remarks']),
+            is_active=True,
+            status_ar='open'
+        )
+        session.add(new_keyname_config)
+        serial_number += 1   
+
+    return None
+
+
+
+
+
+---------------------------------------------
+
+
 class UploadMakerResource(Resource):
     @jwt_required()
     @cross_origin()
