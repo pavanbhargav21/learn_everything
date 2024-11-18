@@ -1,4 +1,48 @@
 
+
+from PIL import Image
+
+def find_partial_image(full_image_path, partial_image_path):
+    # Load the full image and partial image
+    full_image = Image.open(full_image_path)
+    partial_image = Image.open(partial_image_path)
+    
+    # Convert both images to RGBA mode to ensure compatibility
+    full_image = full_image.convert("RGBA")
+    partial_image = partial_image.convert("RGBA")
+    
+    # Get dimensions of the images
+    full_width, full_height = full_image.size
+    partial_width, partial_height = partial_image.size
+    
+    # Loop through the full image
+    for x in range(full_width - partial_width + 1):
+        for y in range(full_height - partial_height + 1):
+            # Crop a region of the full image to match the partial image's size
+            cropped_region = full_image.crop((x, y, x + partial_width, y + partial_height))
+            
+            # Compare the cropped region with the partial image
+            if list(cropped_region.getdata()) == list(partial_image.getdata()):
+                return (x, y)  # Coordinates of the match
+    
+    return None  # No match found
+
+# Paths to images
+full_image_path = "path_to_full_image.png"
+partial_image_path = "path_to_partial_image.png"
+
+# Find the match
+coordinates = find_partial_image(full_image_path, partial_image_path)
+
+if coordinates:
+    print(f"Partial image found at coordinates: {coordinates}")
+else:
+    print("Partial image not found in the full image.")
+
+
+
+
+
 from skimage import io
 from skimage.feature import match_template
 import numpy as np
