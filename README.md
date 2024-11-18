@@ -1,3 +1,40 @@
+
+from skimage import io
+from skimage.feature import match_template
+import numpy as np
+
+def find_partial_in_full_skimage(full_image_path, partial_image_path, threshold=0.8):
+    # Load images as grayscale for compatibility
+    full_image = io.imread(full_image_path, as_gray=True)
+    partial_image = io.imread(partial_image_path, as_gray=True)
+
+    # Perform template matching
+    result = match_template(full_image, partial_image)
+
+    # Find the maximum correlation value
+    max_corr = np.max(result)
+    y, x = np.unravel_index(np.argmax(result), result.shape)
+
+    if max_corr >= threshold:
+        print(f"Match found with confidence {max_corr:.2f}")
+        return (x, y), max_corr
+    else:
+        print("No match found.")
+        return None, max_corr
+
+# Example usage
+full_image_path = "path/to/full_image.png"  # Replace with your full image path
+partial_image_path = "path/to/partial_image.png"  # Replace with your partial image path
+
+coordinates, confidence = find_partial_in_full_skimage(full_image_path, partial_image_path)
+
+if coordinates:
+    print(f"Coordinates of match: {coordinates}")
+
+
+
+
+
 import cv2
 import numpy as np
 
