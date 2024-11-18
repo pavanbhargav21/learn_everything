@@ -1,3 +1,47 @@
+import cv2
+import numpy as np
+
+def find_partial_image(full_image_path, partial_image_path, confidence_threshold=0.9):
+    # Load full and partial images in grayscale
+    full_image = cv2.imread(full_image_path, cv2.IMREAD_GRAYSCALE)
+    partial_image = cv2.imread(partial_image_path, cv2.IMREAD_GRAYSCALE)
+    
+    # Check if images are loaded correctly
+    if full_image is None or partial_image is None:
+        print("Error: One or both images could not be loaded.")
+        return None
+    
+    # Perform template matching
+    result = cv2.matchTemplate(full_image, partial_image, cv2.TM_CCOEFF_NORMED)
+    
+    # Find location with maximum similarity
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+    
+    # Check if the match meets the confidence threshold
+    if max_val >= confidence_threshold:
+        top_left = max_loc
+        bottom_right = (top_left[0] + partial_image.shape[1], top_left[1] + partial_image.shape[0])
+        return top_left, bottom_right, max_val
+    else:
+        return None
+
+# Paths to images
+full_image_path = "path_to_full_image.png"
+partial_image_path = "path_to_partial_image.png"
+
+# Find partial image
+match = find_partial_image(full_image_path, partial_image_path, confidence_threshold=0.9)
+
+if match:
+    top_left, bottom_right, confidence = match
+    print(f"Partial image found at coordinates: {top_left} to {bottom_right} with confidence: {confidence:.2f}")
+else:
+    print("Partial image not found.")
+
+
+
+
+
 
 
 from PIL import Image
