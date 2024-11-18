@@ -1,3 +1,45 @@
+import cv2
+import numpy as np
+
+def find_partial_in_full(full_image_path, partial_image_path, threshold=0.8):
+    # Load images
+    full_image = cv2.imread(full_image_path)
+    partial_image = cv2.imread(partial_image_path)
+    
+    if full_image is None or partial_image is None:
+        print("Error: Could not load one or both images.")
+        return None
+
+    # Perform template matching
+    result = cv2.matchTemplate(full_image, partial_image, cv2.TM_CCOEFF_NORMED)
+
+    # Find locations where the result matches the threshold
+    locations = np.where(result >= threshold)
+
+    # If matches are found, return the coordinates
+    if len(locations[0]) > 0:
+        matches = []
+        for point in zip(*locations[::-1]):  # Reverse coordinates
+            matches.append(point)  # Top-left corner of the match
+        return matches
+    else:
+        print("No matches found.")
+        return None
+
+# Example usage
+full_image_path = "path/to/full_image.png"  # Replace with your full image path
+partial_image_path = "path/to/partial_image.png"  # Replace with your partial image path
+
+# Call the function
+matches = find_partial_in_full(full_image_path, partial_image_path, threshold=0.8)
+
+if matches:
+    for i, match in enumerate(matches, start=1):
+        print(f"Match {i}: Top-left corner at {match}")
+
+
+
+
 
 key-1
 
