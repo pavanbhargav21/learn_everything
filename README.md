@@ -1,3 +1,72 @@
+
+
+
+import cv2
+import numpy as np
+import os
+
+def find_partial_image(full_image_path, partial_image_path, output_folder="process", confidence_threshold=0.9):
+    # Create output folder if it doesn't exist
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    
+    # Load full and partial images in grayscale
+    full_image = cv2.imread(full_image_path, cv2.IMREAD_GRAYSCALE)
+    partial_image = cv2.imread(partial_image_path, cv2.IMREAD_GRAYSCALE)
+    
+    # Check if images are loaded correctly
+    if full_image is None or partial_image is None:
+        print("Error: One or both images could not be loaded.")
+        return None
+    
+    # Save grayscale images for verification
+    cv2.imwrite(os.path.join(output_folder, "full_image_gray.png"), full_image)
+    cv2.imwrite(os.path.join(output_folder, "partial_image_gray.png"), partial_image)
+    
+    # Perform template matching
+    result = cv2.matchTemplate(full_image, partial_image, cv2.TM_CCOEFF_NORMED)
+    
+    # Save the result matrix visualization for verification
+    result_normalized = cv2.normalize(result, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    cv2.imwrite(os.path.join(output_folder, "match_result.png"), result_normalized)
+    
+    # Find location with maximum similarity
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+    
+    # Check if the match meets the confidence threshold
+    if max_val >= confidence_threshold:
+        top_left = max_loc
+        bottom_right = (top_left[0] + partial_image.shape[1], top_left[1] + partial_image.shape[0])
+        
+        # Draw a rectangle on the original full image for verification
+        full_image_with_match = cv2.imread(full_image_path)
+        cv2.rectangle(full_image_with_match, top_left, bottom_right, (0, 255, 0), 2)
+        cv2.imwrite(os.path.join(output_folder, "matched_region.png"), full_image_with_match)
+        
+        return top_left, bottom_right, max_val
+    else:
+        return None
+
+# Paths to images
+full_image_path = "path_to_full_image.png"
+partial_image_path = "path_to_partial_image.png"
+
+# Find partial image
+match = find_partial_image(full_image_path, partial_image_path, output_folder="process", confidence_threshold=0.9)
+
+if match:
+    top_left, bottom_right, confidence = match
+    print(f"Partial image found at coordinates: {top_left} to {bottom_right} with confidence: {confidence:.2f}")
+else:
+    print("Partial image not found.")
+
+
+
+
+
+
+
+
 import cv2
 import numpy as np
 
